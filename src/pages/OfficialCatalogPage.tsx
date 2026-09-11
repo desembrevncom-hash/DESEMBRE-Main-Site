@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { DEFAULT_BRANDING } from "@/config/branding";
 import {
   ShieldCheck,
-  ExternalLink,
   ArrowRight,
   Menu,
   X,
@@ -86,7 +84,6 @@ export function OfficialCatalogPage() {
           className="absolute inset-0 w-full h-full object-cover"
           style={{
             objectPosition: "center 42%",
-            // Show only when video not loaded
             opacity: videoFailed ? 1 : 0,
             transition: "opacity 0.6s ease",
           }}
@@ -125,7 +122,7 @@ export function OfficialCatalogPage() {
         }}
       />
 
-      {/* ── 3. TOP NAVBAR ─────────────────────────────────────────────────── */}
+      {/* ── 3. TOP NAVBAR (Minimal Public Navigation) ──────────────────────── */}
       <header
         className="relative z-20 w-full flex items-center justify-between shrink-0"
         style={{
@@ -147,45 +144,14 @@ export function OfficialCatalogPage() {
           </div>
         </Link>
 
-        {/* Desktop nav — right */}
+        {/* Desktop nav — right: Minimal Public Links */}
         <nav className="hidden md:flex items-center gap-5 lg:gap-7">
           <Link
             to="/"
-            className="text-xs sm:text-[13px] font-medium text-slate-200 hover:text-white transition-colors"
+            className="text-xs sm:text-[13px] font-semibold text-slate-200 hover:text-white px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md transition-all"
           >
             Trang chủ
           </Link>
-
-          <a
-            href={DEFAULT_BRANDING.partner_hub_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs sm:text-[13px] font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1"
-          >
-            Partner Hub
-            <ExternalLink className="w-3 h-3 text-slate-500" />
-          </a>
-
-          <a
-            href={DEFAULT_BRANDING.academy_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs sm:text-[13px] font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1"
-          >
-            Academy
-            <ExternalLink className="w-3 h-3 text-slate-500" />
-          </a>
-
-          {/* Glassy pill button */}
-          <a
-            href={DEFAULT_BRANDING.partner_hub_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/18 text-white font-semibold text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 shadow-md"
-          >
-            Đăng nhập Partner
-            <ExternalLink className="w-3 h-3 text-amber-300" />
-          </a>
         </nav>
 
         {/* Mobile hamburger */}
@@ -200,53 +166,20 @@ export function OfficialCatalogPage() {
 
       {/* Mobile slide-down drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-[68px] left-4 right-4 z-30 bg-slate-950/96 border border-slate-800 backdrop-blur-xl rounded-2xl p-5 space-y-4 shadow-2xl">
+        <div className="md:hidden absolute top-[68px] left-4 right-4 z-30 bg-slate-950/96 border border-slate-800 backdrop-blur-xl rounded-2xl p-4 space-y-3 shadow-2xl">
           <nav className="flex flex-col space-y-1">
             <Link
               to="/"
               onClick={() => setMobileMenuOpen(false)}
-              className="text-sm font-semibold text-slate-200 hover:text-white py-2 px-2 rounded-lg hover:bg-white/5 transition-colors"
+              className="text-sm font-semibold text-slate-200 hover:text-white py-2 px-3 rounded-lg hover:bg-white/5 transition-colors"
             >
               Trang chủ xác minh
             </Link>
-            <a
-              href={DEFAULT_BRANDING.partner_hub_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm font-semibold text-slate-200 hover:text-white py-2 px-2 rounded-lg hover:bg-white/5 flex items-center justify-between transition-colors"
-            >
-              DESEMBRE Partner Hub
-              <ExternalLink className="w-4 h-4 text-slate-500" />
-            </a>
-            <a
-              href={DEFAULT_BRANDING.academy_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm font-semibold text-slate-200 hover:text-white py-2 px-2 rounded-lg hover:bg-white/5 flex items-center justify-between transition-colors"
-            >
-              DESEMBRE Academy
-              <ExternalLink className="w-4 h-4 text-slate-500" />
-            </a>
           </nav>
-          <div className="pt-3 border-t border-slate-800">
-            <a
-              href={DEFAULT_BRANDING.partner_hub_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
-            >
-              Đăng nhập Partner Hub
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
         </div>
       )}
 
       {/* ── 4. HERO CONTENT — bottom-anchored ─────────────────────────────── */}
-      {/*
-        Key: flex-1 + flex-col + justify-end pushes this block to the bottom.
-        margin-top: auto + justify-end = content sits at floor of viewport.
-      */}
       <main
         className="relative z-20 flex-1 flex flex-col justify-end items-center text-center w-full"
         style={{
@@ -297,7 +230,7 @@ export function OfficialCatalogPage() {
             className="text-slate-400 font-normal leading-relaxed"
             style={{ fontSize: "clamp(11px, 1.2vw, 13px)", maxWidth: "560px" }}
           >
-            Danh mục, hình ảnh và thông tin sản phẩm được đồng bộ từ hệ thống DESEMBRE Partner Hub.
+            Danh mục, hình ảnh và thông tin sản phẩm được đồng bộ từ hệ thống dữ liệu chính thức DESEMBRE.
           </p>
 
           {/* CTA button */}
