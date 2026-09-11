@@ -109,7 +109,7 @@ export function OfficialCatalogPage() {
         className="absolute inset-0 pointer-events-none z-[2]"
         style={{
           background:
-            "radial-gradient(ellipse 100% 80% at 50% 38%, transparent 32%, rgba(3, 7, 18, 0.55) 100%)",
+            "radial-gradient(ellipse 100% 80% at 50% 38%, transparent 32%, rgba(3, 7, 18, 0.5) 100%)",
         }}
       />
 
@@ -118,7 +118,7 @@ export function OfficialCatalogPage() {
         className="absolute inset-0 pointer-events-none z-[3]"
         style={{
           background:
-            "linear-gradient(180deg, transparent 0%, transparent 38%, rgba(3, 7, 18, 0.78) 72%, rgba(3, 7, 18, 0.98) 100%)",
+            "linear-gradient(180deg, transparent 0%, transparent 42%, rgba(3, 7, 18, 0.72) 74%, rgba(3, 7, 18, 0.96) 100%)",
         }}
       />
 
@@ -126,19 +126,19 @@ export function OfficialCatalogPage() {
       <header
         className="relative z-20 w-full flex items-center justify-between shrink-0"
         style={{
-          padding: "clamp(14px, 2.8vw, 26px) clamp(20px, 5.5vw, 72px)",
+          padding: "clamp(12px, 2.2vw, 22px) clamp(20px, 5.5vw, 72px)",
         }}
       >
         {/* Logo left */}
-        <Link to="/" className="flex items-center gap-3 group">
-          <div className="w-8 h-8 rounded-lg bg-white/10 backdrop-blur-md border border-white/15 flex items-center justify-center text-amber-300 shadow-sm group-hover:bg-white/20 transition-all">
-            <ShieldCheck className="w-4 h-4" />
+        <Link to="/" className="flex items-center gap-2.5 group">
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/10 backdrop-blur-md border border-white/15 flex items-center justify-center text-amber-300 shadow-sm group-hover:bg-white/20 transition-all">
+            <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
           <div className="flex flex-col leading-none">
-            <span className="font-extrabold text-sm sm:text-[15px] tracking-wider text-white group-hover:text-amber-300 transition-colors">
+            <span className="font-extrabold text-xs sm:text-sm tracking-wider text-white group-hover:text-amber-300 transition-colors">
               DESÉMBRE
             </span>
-            <span className="text-[9px] tracking-widest text-slate-400 font-semibold uppercase mt-0.5">
+            <span className="text-[8.5px] sm:text-[9px] tracking-widest text-slate-400 font-semibold uppercase mt-0.5">
               Vietnam Official
             </span>
           </div>
@@ -148,7 +148,7 @@ export function OfficialCatalogPage() {
         <nav className="hidden md:flex items-center gap-5 lg:gap-7">
           <Link
             to="/"
-            className="text-xs sm:text-[13px] font-semibold text-slate-200 hover:text-white px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md transition-all"
+            className="text-xs font-semibold text-slate-200 hover:text-white px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md transition-all"
           >
             Trang chủ
           </Link>
@@ -157,21 +157,21 @@ export function OfficialCatalogPage() {
         {/* Mobile hamburger */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="md:hidden p-2 text-slate-300 hover:text-white rounded-lg bg-white/5 border border-white/10 backdrop-blur-md transition-colors"
+          className="md:hidden p-1.5 text-slate-300 hover:text-white rounded-lg bg-white/5 border border-white/10 backdrop-blur-md transition-colors"
           aria-label="Toggle menu"
         >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
         </button>
       </header>
 
       {/* Mobile slide-down drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-[68px] left-4 right-4 z-30 bg-slate-950/96 border border-slate-800 backdrop-blur-xl rounded-2xl p-4 space-y-3 shadow-2xl">
+        <div className="md:hidden absolute top-[60px] left-4 right-4 z-30 bg-slate-950/96 border border-slate-800 backdrop-blur-xl rounded-2xl p-3.5 space-y-2 shadow-2xl">
           <nav className="flex flex-col space-y-1">
             <Link
               to="/"
               onClick={() => setMobileMenuOpen(false)}
-              className="text-sm font-semibold text-slate-200 hover:text-white py-2 px-3 rounded-lg hover:bg-white/5 transition-colors"
+              className="text-xs font-semibold text-slate-200 hover:text-white py-2 px-3 rounded-lg hover:bg-white/5 transition-colors"
             >
               Trang chủ xác minh
             </Link>
@@ -179,32 +179,32 @@ export function OfficialCatalogPage() {
         </div>
       )}
 
-      {/* ── 4. HERO CONTENT — bottom-anchored ─────────────────────────────── */}
+      {/* ── 4. HERO CONTENT — refined & bottom-anchored ───────────────────── */}
       <main
         className="relative z-20 flex-1 flex flex-col justify-end items-center text-center w-full"
         style={{
-          paddingLeft: "clamp(20px, 6vw, 96px)",
-          paddingRight: "clamp(20px, 6vw, 96px)",
-          paddingBottom: "clamp(48px, 8vh, 88px)",
+          paddingLeft: "clamp(20px, 5vw, 80px)",
+          paddingRight: "clamp(20px, 5vw, 80px)",
+          paddingBottom: "clamp(36px, 5.5vh, 64px)",
         }}
       >
         <div
-          className="flex flex-col items-center gap-3 sm:gap-4 w-full"
-          style={{ maxWidth: "780px" }}
+          className="flex flex-col items-center gap-2.5 sm:gap-3.5 w-full"
+          style={{ maxWidth: "680px" }}
         >
           {/* Eyebrow badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/50 border border-white/10 text-amber-300 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.13em] backdrop-blur-md shadow-lg">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/50 border border-white/10 text-amber-300 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.12em] backdrop-blur-md shadow-md">
             <ShieldCheck className="w-3 h-3 text-amber-400 shrink-0" />
             <span>DESEMBRE VIETNAM — OFFICIAL VERIFICATION</span>
           </div>
 
-          {/* Headline */}
+          {/* Refined Headline */}
           <h1
-            className="font-black text-white"
+            className="font-extrabold text-white tracking-tight"
             style={{
-              fontSize: "clamp(42px, 7vw, 88px)",
-              lineHeight: 1.0,
-              letterSpacing: "-0.04em",
+              fontSize: "clamp(30px, 4.2vw, 56px)",
+              lineHeight: 0.98,
+              letterSpacing: "-0.035em",
             }}
           >
             Xác Minh Mỹ Phẩm
@@ -216,10 +216,10 @@ export function OfficialCatalogPage() {
 
           {/* Subtitle */}
           <p
-            className="text-slate-200 font-medium leading-relaxed"
+            className="text-slate-200/90 font-medium leading-relaxed"
             style={{
-              fontSize: "clamp(13px, 1.8vw, 17px)",
-              maxWidth: "640px",
+              fontSize: "clamp(12px, 1.4vw, 15px)",
+              maxWidth: "560px",
             }}
           >
             Kênh thông tin chính thức giúp khách hàng, Spa và Clinic kiểm tra sản phẩm DESEMBRE tại Việt Nam.
@@ -227,30 +227,29 @@ export function OfficialCatalogPage() {
 
           {/* Secondary note */}
           <p
-            className="text-slate-400 font-normal leading-relaxed"
-            style={{ fontSize: "clamp(11px, 1.2vw, 13px)", maxWidth: "560px" }}
+            className="text-slate-400/80 font-normal leading-relaxed"
+            style={{ fontSize: "clamp(10px, 1.1vw, 12px)", maxWidth: "480px" }}
           >
             Danh mục, hình ảnh và thông tin sản phẩm được đồng bộ từ hệ thống dữ liệu chính thức DESEMBRE.
           </p>
 
-          {/* CTA button */}
-          <div className="pt-1 w-full flex justify-center">
+          {/* Compact Primary CTA button */}
+          <div className="pt-0.5 w-full flex justify-center">
             <Link
               to="/"
-              className="inline-flex items-center justify-center gap-2.5 rounded-xl font-extrabold text-slate-950 shadow-2xl shadow-amber-500/25 transition-all hover:scale-[1.04] active:scale-95"
+              className="inline-flex items-center justify-center gap-2 rounded-xl font-extrabold text-slate-950 shadow-xl shadow-amber-500/20 transition-all hover:scale-[1.03] active:scale-95 h-11 px-6 sm:px-7"
               style={{
                 background: "linear-gradient(135deg, #f59e0b 0%, #eab308 100%)",
-                padding: "clamp(12px, 1.4vh, 16px) clamp(28px, 4vw, 48px)",
-                fontSize: "clamp(12px, 1.4vw, 15px)",
+                fontSize: "clamp(12px, 1.2vw, 14px)",
               }}
             >
-              Xem danh mục chính thức
-              <ArrowRight className="w-4 h-4" />
+              <span>Xem danh mục chính thức</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
           {/* Verification domain line */}
-          <div className="flex items-center gap-1.5 text-slate-500" style={{ fontSize: "11px" }}>
+          <div className="flex items-center gap-1.5 text-slate-500/90" style={{ fontSize: "10.5px" }}>
             <Globe className="w-3 h-3 shrink-0" />
             <span>Website xác minh:</span>
             <span className="font-mono text-slate-400">www.desembre-vn.com</span>
