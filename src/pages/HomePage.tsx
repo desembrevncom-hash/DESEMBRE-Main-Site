@@ -173,7 +173,7 @@ export function HomePage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* ── LEFT STICKY SIDEBAR (Desktop Only) ───────────────────────── */}
-          <aside className="hidden lg:block lg:col-span-3 sticky top-24 self-start space-y-4">
+          <aside className="hidden lg:block lg:col-span-3 sticky top-14 self-start space-y-4">
             <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-sm space-y-4">
               {/* Sidebar Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
