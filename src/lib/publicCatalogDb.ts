@@ -77,17 +77,17 @@ export async function fetchMainSiteCatalog(): Promise<PublicCatalogDataResult> {
 
       const activeProductIds = rawProducts.map((p) => p.id);
 
-      // 4. Fetch Variants
+      // 4. Fetch Variants (Without Price fields for public privacy)
       const [retailRes, salonRes] = await Promise.all([
         supabase
           .from("catalog_product_variants")
-          .select("id, product_id, sku, channel, size_label, price, is_active")
+          .select("id, product_id, sku, channel, size_label, is_active")
           .eq("channel", "retail")
           .eq("is_active", true)
           .in("product_id", activeProductIds),
         supabase
           .from("catalog_product_variants")
-          .select("id, product_id, sku, channel, size_label, price, is_active")
+          .select("id, product_id, sku, channel, size_label, is_active")
           .eq("channel", "salon")
           .eq("is_active", true)
           .in("product_id", activeProductIds),
@@ -145,7 +145,7 @@ export async function fetchMainSiteCatalog(): Promise<PublicCatalogDataResult> {
         });
       }
 
-      // 6. Combine
+      // 6. Combine (Without any price fields)
       const products: MainSiteProduct[] = rawProducts.map((p) => {
         const brand = brandMap.get(p.brand_id);
         const cat = p.category_id ? categoryMap.get(p.category_id) : undefined;
@@ -171,9 +171,7 @@ export async function fetchMainSiteCatalog(): Promise<PublicCatalogDataResult> {
           image_url: p.image_url || null,
           retailVariants: retList,
           salonVariants: salList,
-          retailPrice: primaryRetail?.price ?? null,
           retailSize: primaryRetail?.size_label ?? null,
-          salonPrice: primarySalon?.price ?? null,
           salonSize: primarySalon?.size_label ?? null,
           knowledge: kn,
         };

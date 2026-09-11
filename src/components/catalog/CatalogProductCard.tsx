@@ -1,6 +1,5 @@
 import { MainSiteProduct } from "@/types/catalog";
 import { CatalogProductImage } from "./CatalogProductImage";
-import { formatCurrencyVND } from "@/lib/utils";
 import { Sparkles, CheckCircle2, ArrowRight } from "lucide-react";
 
 interface Props {
@@ -10,9 +9,7 @@ interface Props {
 }
 
 export function CatalogProductCard({ product, onSelect, priority = false }: Props) {
-  const primaryPrice = product.retailPrice || product.salonPrice;
   const primarySize = product.retailSize || product.salonSize;
-  const isSalonOnly = !product.retailPrice && Boolean(product.salonPrice);
 
   // Extract up to 2 clean benefit bullets
   const rawBenefits = product.knowledge?.benefits || "";
@@ -113,28 +110,14 @@ export function CatalogProductCard({ product, onSelect, priority = false }: Prop
           )}
         </div>
 
-        {/* Price & CTA Area */}
+        {/* Bottom Area: Size & CTA Action (No Price) */}
         <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-auto">
-          <div>
-            {primaryPrice ? (
-              <div>
-                <span className="text-[10px] text-slate-400 font-medium block">
-                  {isSalonOnly ? "Dành cho Spa/Clinic" : "Giá niêm yết"}
-                </span>
-                <span className="font-extrabold text-slate-900 text-sm sm:text-base text-sky-950">
-                  {formatCurrencyVND(primaryPrice)}
-                </span>
-              </div>
-            ) : (
-              <div>
-                <span className="text-[10px] text-slate-400 font-medium block">Tư vấn chính hãng</span>
-                <span className="text-xs font-bold text-sky-700">Liên hệ báo giá</span>
-              </div>
-            )}
-          </div>
+          <span className="text-[11px] font-medium text-slate-400">
+            {product.category_name || "Chăm sóc da sinh học"}
+          </span>
 
           {/* CTA: Xem chi tiết */}
-          <button className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 bg-sky-50 group-hover:bg-sky-600 group-hover:text-white px-3 py-2 rounded-xl transition-all duration-200">
+          <button className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 bg-sky-50 group-hover:bg-sky-600 group-hover:text-white px-3.5 py-2 rounded-xl transition-all duration-200">
             <span>Chi tiết</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>

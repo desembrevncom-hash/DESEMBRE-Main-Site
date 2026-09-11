@@ -1,8 +1,7 @@
 import { MainSiteProduct } from "@/types/catalog";
 import { CatalogProductImage } from "./CatalogProductImage";
-import { formatCurrencyVND } from "@/lib/utils";
 import { DEFAULT_BRANDING } from "@/config/branding";
-import { X, CheckCircle2, AlertCircle, ShieldCheck, Sparkles, MessageCircle, Phone } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, ShieldCheck, Sparkles, MessageCircle, Phone, Package } from "lucide-react";
 
 interface Props {
   product: MainSiteProduct | null;
@@ -15,6 +14,7 @@ export function ProductDetailModal({ product, onClose }: Props) {
   const kn = product.knowledge;
   const ingredients = kn?.ingredient_highlights || [];
   const skinTypes = kn?.skin_types || [];
+  const hasVariants = product.retailVariants.length > 0 || product.salonVariants.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-fade-in">
@@ -28,9 +28,9 @@ export function ProductDetailModal({ product, onClose }: Props) {
         </button>
 
         <div className="grid md:grid-cols-2 gap-6 p-6 sm:p-8">
-          {/* Left: Product Image & Highlights */}
+          {/* Left: Product Image & Specifications */}
           <div className="flex flex-col">
-            <div className="relative aspect-square w-full bg-slate-50 rounded-2xl overflow-hidden p-6 border border-slate-100">
+            <div className="relative aspect-square w-full bg-slate-50 rounded-2xl overflow-hidden p-6 border border-slate-100 flex items-center justify-center">
               <CatalogProductImage
                 src={product.image_url}
                 alt={product.name}
@@ -39,7 +39,7 @@ export function ProductDetailModal({ product, onClose }: Props) {
               />
             </div>
 
-            {/* Quick Badges */}
+            {/* Quick Skin Type Badges */}
             {skinTypes.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-1.5">
                 {skinTypes.map((st, i) => (
@@ -50,36 +50,29 @@ export function ProductDetailModal({ product, onClose }: Props) {
               </div>
             )}
 
-            {/* Sizes & Variants */}
-            {(product.retailVariants.length > 0 || product.salonVariants.length > 0) && (
-              <div className="mt-6 space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+            {/* Sizes & Packaging Specifications (No Prices) */}
+            {hasVariants && (
+              <div className="mt-5 space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-sky-600" />
                   Quy cách đóng gói
                 </span>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-2 pt-1">
                   {product.retailVariants.map((v) => (
-                    <div key={v.id} className="flex justify-between items-center text-xs">
-                      <span className="font-semibold text-slate-800">
-                        Bản Tiêu chuẩn ({v.size_label || "Retail"})
-                      </span>
-                      {v.price ? (
-                        <span className="font-bold text-sky-700">{formatCurrencyVND(v.price)}</span>
-                      ) : (
-                        <span className="text-slate-400">Liên hệ</span>
-                      )}
-                    </div>
+                    <span
+                      key={v.id}
+                      className="text-xs font-semibold bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg shadow-2xs"
+                    >
+                      Bản Tiêu chuẩn ({v.size_label || "Retail"})
+                    </span>
                   ))}
                   {product.salonVariants.map((v) => (
-                    <div key={v.id} className="flex justify-between items-center text-xs">
-                      <span className="font-semibold text-purple-800">
-                        Bản Chuyên nghiệp Salon ({v.size_label || "Salon"})
-                      </span>
-                      {v.price ? (
-                        <span className="font-bold text-purple-700">{formatCurrencyVND(v.price)}</span>
-                      ) : (
-                        <span className="text-slate-400">Dành cho Spa / Clinic</span>
-                      )}
-                    </div>
+                    <span
+                      key={v.id}
+                      className="text-xs font-semibold bg-purple-50 border border-purple-200 text-purple-800 px-3 py-1.5 rounded-lg shadow-2xs"
+                    >
+                      Bản Chuyên nghiệp Salon ({v.size_label || "Salon"})
+                    </span>
                   ))}
                 </div>
               </div>
@@ -160,7 +153,7 @@ export function ProductDetailModal({ product, onClose }: Props) {
               </div>
             )}
 
-            {/* Public CTAs */}
+            {/* Public Consultation CTAs (No Price) */}
             <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3 mt-auto">
               <a
                 href={`tel:${DEFAULT_BRANDING.hotline.replace(/\s+/g, "")}`}

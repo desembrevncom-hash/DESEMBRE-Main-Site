@@ -4,7 +4,6 @@ export interface PublicCatalogVariant {
   sku?: string | null;
   channel: "retail" | "salon";
   size_label?: string | null;
-  price?: number;
   is_active: boolean;
 }
 
@@ -34,8 +33,6 @@ export interface MainSiteProduct {
   retailVariants: PublicCatalogVariant[];
   salonVariants: PublicCatalogVariant[];
   knowledge?: PublicProductKnowledge | null;
-  retailPrice?: number | null;
-  salonPrice?: number | null;
   retailSize?: string | null;
   salonSize?: string | null;
 }
