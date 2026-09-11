@@ -155,17 +155,6 @@ export function HomePage() {
           <p className="text-xs sm:text-sm text-slate-600 max-w-2xl mx-auto leading-relaxed">
             Danh mục sản phẩm chính thức tại Việt Nam, hình ảnh và thông tin được đồng bộ từ hệ thống dữ liệu DESEMBRE Partner Hub.
           </p>
-
-          {/* Verification Link Badge */}
-          <div className="pt-1 flex items-center justify-center gap-4 text-xs">
-            <Link
-              to="/official"
-              className="inline-flex items-center gap-1.5 text-amber-700 hover:text-amber-800 font-semibold bg-amber-50 hover:bg-amber-100/80 px-3 py-1 rounded-full border border-amber-200 transition-colors"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
-              <span>Trang xác minh cúp chính hãng (QR Landing)</span>
-            </Link>
-          </div>
         </div>
       </section>
 
