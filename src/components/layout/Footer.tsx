@@ -51,6 +51,17 @@ export function Footer() {
                   <span>Hotline: <strong className="text-white">{DEFAULT_BRANDING.hotline}</strong></span>
                 </a>
               </li>
+              <li>
+                <a
+                  href={DEFAULT_BRANDING.zalo_oa_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 hover:text-sky-400 transition-colors text-sky-400"
+                >
+                  <span>Zalo OA Chính Thức</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </li>
             </ul>
           </div>
 

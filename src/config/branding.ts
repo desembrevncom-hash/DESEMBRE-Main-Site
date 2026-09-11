@@ -10,6 +10,7 @@ export interface BrandSettings {
   address: string;
   partner_hub_url: string;
   academy_url: string;
+  zalo_oa_url: string;
 }
 
 export const DEFAULT_BRANDING: BrandSettings = {
@@ -24,4 +25,5 @@ export const DEFAULT_BRANDING: BrandSettings = {
   address: "Tầng 5, Tòa nhà Desembre, Hà Nội, Việt Nam",
   partner_hub_url: import.meta.env.VITE_PARTNER_HUB_URL || "https://hub.desembre-vn.com",
   academy_url: import.meta.env.VITE_ACADEMY_URL || "https://training.desembre-vn.com",
+  zalo_oa_url: "https://oa.zalo.me/4334213079675481491",
 };

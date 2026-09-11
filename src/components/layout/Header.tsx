@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { DEFAULT_BRANDING } from "@/config/branding";
-import { Menu, X, Phone, ShieldCheck, Sparkles } from "lucide-react";
+import { Menu, X, Phone, ShieldCheck, Sparkles, MessageCircle } from "lucide-react";
 
 interface HeaderProps {
   hideMainHeader?: boolean;
@@ -18,20 +18,37 @@ export function Header({ hideMainHeader }: HeaderProps) {
   return (
     <header className="sticky top-0 z-40">
       {/* ── 1. Top Dark Utility Bar (Always Visible) ──────────────────────── */}
-      <div className="bg-slate-950 text-slate-300 text-xs py-2 px-4 sm:px-8 flex justify-between items-center border-b border-slate-800 shadow-xs">
-        <div className="flex items-center gap-2">
+      <div className="bg-slate-950 text-slate-300 text-xs py-2 px-3 sm:px-8 flex justify-between items-center border-b border-slate-800 shadow-xs gap-2">
+        {/* Left: Brand Trust Statement */}
+        <div className="flex items-center gap-2 min-w-0">
           <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-          <span className="font-medium text-slate-200 truncate">
+          <span className="font-medium text-slate-200 truncate text-[11px] sm:text-xs">
             Cổng thông tin & danh mục sản phẩm chính thức DESEMBRE tại Việt Nam
           </span>
         </div>
-        <div className="flex items-center gap-6 shrink-0">
+
+        {/* Right: Zalo OA + Hotline */}
+        <div className="flex items-center gap-2.5 sm:gap-5 shrink-0">
+          <a
+            href={DEFAULT_BRANDING.zalo_oa_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sky-400 hover:text-sky-300 font-semibold transition-all bg-sky-950/70 hover:bg-sky-900/80 px-2.5 py-0.5 rounded-full border border-sky-800/80 text-[11px] sm:text-xs"
+          >
+            <MessageCircle className="w-3 h-3 text-sky-400 shrink-0" />
+            <span className="hidden sm:inline">Zalo OA</span>
+            <span className="sm:hidden">Zalo</span>
+          </a>
+
           <a
             href={`tel:${DEFAULT_BRANDING.hotline.replace(/\s+/g, "")}`}
-            className="flex items-center gap-1.5 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 hover:text-white transition-colors text-[11px] sm:text-xs text-slate-300"
           >
-            <Phone className="w-3 h-3 text-amber-400" />
-            <span>Hotline: <strong className="text-white">{DEFAULT_BRANDING.hotline}</strong></span>
+            <Phone className="w-3 h-3 text-amber-400 shrink-0" />
+            <span>
+              <span className="hidden sm:inline">Hotline: </span>
+              <strong className="text-white">{DEFAULT_BRANDING.hotline}</strong>
+            </span>
           </a>
         </div>
       </div>
