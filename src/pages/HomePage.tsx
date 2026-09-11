@@ -1,290 +1,348 @@
-import { Link } from "react-router-dom";
-import { DEFAULT_BRANDING } from "@/config/branding";
+import { useEffect, useMemo } from "react";
+import { useSearchParams, Link } from "react-router-dom";
+import { usePublicCatalog } from "@/hooks/usePublicCatalog";
+import { CatalogProductGrid } from "@/components/catalog/CatalogProductGrid";
+import { ProductDetailModal } from "@/components/catalog/ProductDetailModal";
 import {
-  ShieldCheck,
-  CheckCircle2,
-  ExternalLink,
-  ArrowRight,
-  Phone,
-  QrCode,
-  Globe,
-  Layers,
-  GraduationCap,
+  Search,
   Sparkles,
-  Building2,
-  FileCheck2,
+  ShieldCheck,
+  Layers,
+  Package,
+  X,
+  CheckCircle2,
+  Filter,
 } from "lucide-react";
 
+// Standard canonical categories list for fast navigation
+const STANDARD_CATEGORIES = [
+  { id: "all", name: "Tất cả sản phẩm", matchKeyword: "" },
+  { id: "lam-sach", name: "Làm sạch da", matchKeyword: "Làm sạch" },
+  { id: "toner", name: "Nước hoa hồng / Toner", matchKeyword: "Toner" },
+  { id: "serum", name: "Serum / Ampoule", matchKeyword: "Serum" },
+  { id: "kem-duong", name: "Kem dưỡng & Phục hồi", matchKeyword: "Kem" },
+  { id: "mat-na", name: "Mặt nạ sinh học & kem", matchKeyword: "Mặt nạ" },
+  { id: "chong-nang", name: "Chống nắng bảo vệ", matchKeyword: "Chống nắng" },
+  { id: "dich-chiet", name: "Dịch chiết & Tế bào gốc", matchKeyword: "Dịch chiết" },
+  { id: "lieu-trinh", name: "Liệu trình Spa / Clinic", matchKeyword: "Liệu trình" },
+];
+
 export function HomePage() {
-  // 8 Specified official category chips
-  const OFFICIAL_CATEGORIES = [
-    { name: "Làm sạch", query: "Làm sạch", count: "Sữa rửa mặt & Tẩy trang" },
-    { name: "Toner", query: "Toner", count: "Nước hoa hồng sinh học" },
-    { name: "Serum / Ampoule", query: "Serum", count: "Tinh chất tế bào gốc" },
-    { name: "Kem dưỡng", query: "Kem dưỡng", count: "Phục hồi & Khóa ẩm" },
-    { name: "Mặt nạ", query: "Mặt nạ", count: "Mặt nạ kem & sinh học" },
-    { name: "Chống nắng", query: "Chống nắng", count: "Bảo vệ màng tế bào" },
-    { name: "Dịch chiết TBG", query: "Dịch chiết", count: "Dưỡng chất chuyên sâu" },
-    { name: "Liệu trình Spa/Clinic", query: "Liệu trình", count: "Bộ phác đồ chuyên nghiệp" },
-  ];
+  const [searchParams, setSearchParams] = useSearchParams();
+  const categoryParam = searchParams.get("category");
+
+  const {
+    products,
+    categories,
+    loading,
+    searchQuery,
+    setSearchQuery,
+    selectedCategory,
+    setSelectedCategory,
+    selectedProduct,
+    setSelectedProduct,
+  } = usePublicCatalog();
+
+  // Sync category query param
+  useEffect(() => {
+    if (categoryParam) {
+      setSelectedCategory(categoryParam);
+    } else {
+      setSelectedCategory("all");
+    }
+  }, [categoryParam, setSelectedCategory]);
+
+  const handleSelectCategory = (catId: string) => {
+    setSelectedCategory(catId);
+    if (catId === "all") {
+      searchParams.delete("category");
+      setSearchParams(searchParams, { replace: true });
+    } else {
+      setSearchParams({ category: catId }, { replace: true });
+    }
+  };
+
+  // Build merged category list (DB categories + standard list) with product counts
+  const categoryNavItems = useMemo(() => {
+    // If DB categories are loaded, use them; otherwise fallback to standard
+    if (categories.length > 0) {
+      const allItem = {
+        id: "all",
+        name: "Tất cả",
+        count: products.length,
+      };
+
+      const dbItems = categories.map((cat) => {
+        const count = products.filter(
+          (p) => p.category_id === cat.id || p.category_name === cat.name
+        ).length;
+        return {
+          id: cat.id,
+          name: cat.name,
+          count,
+        };
+      });
+
+      return [allItem, ...dbItems];
+    }
+
+    // Fallback standard categories
+    return STANDARD_CATEGORIES.map((cat) => {
+      if (cat.id === "all") {
+        return { id: "all", name: "Tất cả", count: products.length };
+      }
+      const count = products.filter((p) =>
+        p.category_name?.toLowerCase().includes(cat.matchKeyword.toLowerCase())
+      ).length;
+      return { id: cat.id, name: cat.name, count };
+    });
+  }, [categories, products]);
+
+  // Client-side filtering taking into account both search query and category
+  const displayedProducts = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+
+    return products.filter((p) => {
+      // 1. Search Query match
+      const matchesSearch =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.description && p.description.toLowerCase().includes(q)) ||
+        (p.product_code && p.product_code.toLowerCase().includes(q)) ||
+        (p.category_name && p.category_name.toLowerCase().includes(q)) ||
+        (p.knowledge?.ingredient_highlights &&
+          p.knowledge.ingredient_highlights.some((ing) => ing.toLowerCase().includes(q))) ||
+        (p.knowledge?.benefits && p.knowledge.benefits.toLowerCase().includes(q));
+
+      // 2. Category match
+      if (selectedCategory === "all") return matchesSearch;
+
+      const matchesCatId = p.category_id === selectedCategory;
+      const matchesCatName = p.category_name === selectedCategory;
+
+      // Also check standard matching keywords if standard ID was selected
+      const standardCat = STANDARD_CATEGORIES.find((sc) => sc.id === selectedCategory);
+      const matchesStandard = standardCat
+        ? p.category_name?.toLowerCase().includes(standardCat.matchKeyword.toLowerCase()) ||
+          p.name.toLowerCase().includes(standardCat.matchKeyword.toLowerCase())
+        : false;
+
+      return matchesSearch && (matchesCatId || matchesCatName || matchesStandard);
+    });
+  }, [products, searchQuery, selectedCategory]);
 
   return (
-    <div className="space-y-12 sm:space-y-16 pb-16 bg-slate-50/50">
-      {/* =========================================================================
-          BLOCK 1: OFFICIAL VERIFICATION HERO
-          ========================================================================= */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-sky-950 text-white pt-14 sm:pt-20 pb-16 px-4 sm:px-6 lg:px-8 border-b border-slate-800">
-        {/* Subtle decorative glow */}
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-80 h-80 bg-sky-500/10 blur-3xl rounded-full pointer-events-none" />
-        <div className="absolute top-10 right-10 w-60 h-60 bg-amber-500/10 blur-3xl rounded-full pointer-events-none" />
+    <div className="min-h-screen bg-slate-50/50 pb-24">
+      {/* ── 1. COMPACT HERO SECTION (260px - 320px Desktop) ──────────────── */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-sky-50/90 via-white to-slate-50 border-b border-slate-200/80 py-10 sm:py-14 px-4 sm:px-6 lg:px-8">
+        {/* Soft decorative background glows */}
+        <div className="absolute top-0 right-1/4 w-80 h-80 bg-sky-100/60 blur-3xl rounded-full pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-amber-50/70 blur-2xl rounded-full pointer-events-none" />
 
-        <div className="max-w-4xl mx-auto text-center relative z-10 space-y-5">
+        <div className="max-w-7xl mx-auto relative z-10 text-center space-y-3">
           {/* Eyebrow */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-800/80 backdrop-blur-md border border-slate-700 text-sky-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider shadow-sm">
-            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-            <span>DESEMBRE VIETNAM — OFFICIAL VERIFICATION</span>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-sky-100/80 border border-sky-200/80 text-sky-800 text-[11px] sm:text-xs font-bold uppercase tracking-wider shadow-xs">
+            <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+            <span>DESEMBRE VIETNAM — OFFICIAL PRODUCT CATALOG</span>
           </div>
 
-          {/* Main Title */}
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight">
-            Xác Minh DESEMBRE Vietnam Chính Thức
+          {/* H1 Headline */}
+          <h1 className="text-2xl sm:text-4xl lg:text-4xl font-extrabold tracking-tight text-slate-900 leading-tight">
+            Danh Mục Sản Phẩm DESEMBRE Chính Thức
           </h1>
 
-          {/* Subtitle */}
-          <p className="text-base sm:text-lg font-medium text-slate-200 max-w-2xl mx-auto leading-relaxed">
-            Kênh thông tin chính thức dành cho khách hàng, Spa và Clinic kiểm tra sản phẩm DESEMBRE tại Việt Nam.
-          </p>
-
           {/* Description */}
-          <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto leading-relaxed">
-            Danh mục, hình ảnh và thông tin sản phẩm được đồng bộ từ hệ thống DESEMBRE Partner Hub.
+          <p className="text-xs sm:text-sm text-slate-600 max-w-2xl mx-auto leading-relaxed">
+            Danh mục sản phẩm chính thức tại Việt Nam, hình ảnh và thông tin được đồng bộ từ hệ thống dữ liệu DESEMBRE Partner Hub.
           </p>
 
-          {/* 3 Trust Badges */}
-          <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs font-semibold text-slate-200 backdrop-blur-xs">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>Kênh chính thức tại Việt Nam</span>
-            </div>
-
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs font-semibold text-slate-200 backdrop-blur-xs">
-              <CheckCircle2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-              <span>Thông tin sản phẩm đã kiểm duyệt</span>
-            </div>
-
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs font-semibold text-slate-200 backdrop-blur-xs">
-              <QrCode className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>Dành cho Spa, Clinic và khách hàng kiểm tra QR</span>
-            </div>
-          </div>
-
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-3">
+          {/* Verification Link Badge */}
+          <div className="pt-1 flex items-center justify-center gap-4 text-xs">
             <Link
               to="/official"
-              className="w-full sm:w-auto bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 text-white font-bold text-sm px-7 py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-sky-900/40 transition-all hover:scale-[1.02]"
+              className="inline-flex items-center gap-1.5 text-amber-700 hover:text-amber-800 font-semibold bg-amber-50 hover:bg-amber-100/80 px-3 py-1 rounded-full border border-amber-200 transition-colors"
             >
-              <span>Xem sản phẩm chính thức</span>
-              <ArrowRight className="w-4 h-4 text-white" />
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+              <span>Trang xác minh cúp chính hãng (QR Landing)</span>
             </Link>
-
-            <a
-              href={`tel:${DEFAULT_BRANDING.hotline.replace(/\s+/g, "")}`}
-              className="w-full sm:w-auto bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 hover:text-white font-semibold text-sm px-6 py-3.5 rounded-xl flex items-center justify-center gap-2 border border-slate-700 backdrop-blur-md transition-all"
-            >
-              <Phone className="w-4 h-4 text-amber-400" />
-              <span>Liên hệ xác minh: {DEFAULT_BRANDING.hotline}</span>
-            </a>
           </div>
+        </div>
+      </section>
 
-          {/* Small Verification Ecosystem Card */}
-          <div className="pt-6 max-w-2xl mx-auto">
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 text-left shadow-xl backdrop-blur-md">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+      {/* ── 2. MAIN CATALOG LAYOUT (STICKY SIDEBAR + CONTENT GRID) ───────── */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* ── LEFT STICKY SIDEBAR (Desktop Only) ───────────────────────── */}
+          <aside className="hidden lg:block lg:col-span-3 sticky top-24 self-start space-y-4">
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-sm space-y-4">
+              {/* Sidebar Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                    Hệ Thống Tên Miền Chính Thức
-                  </span>
+                  <div className="w-7 h-7 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <h2 className="font-extrabold text-sm uppercase tracking-wider text-slate-900">
+                    Danh mục sản phẩm
+                  </h2>
                 </div>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded border border-emerald-500/30">
-                  Verified Active
+                <span className="text-[11px] font-bold text-slate-400">
+                  ({products.length})
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                  <span className="text-[10px] text-slate-400 block font-semibold">Trang Xác Minh QR</span>
-                  <div className="font-mono font-bold text-white text-xs mt-0.5 truncate">
-                    www.desembre-vn.com
-                  </div>
-                </div>
+              {/* Category Nav List (Scrollable if long) */}
+              <nav className="space-y-1 max-h-[calc(100vh-180px)] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200">
+                {categoryNavItems.map((cat) => {
+                  const isActive =
+                    selectedCategory === cat.id ||
+                    (cat.id !== "all" &&
+                      (selectedCategory === cat.name ||
+                        STANDARD_CATEGORIES.find((sc) => sc.id === selectedCategory)?.name === cat.name));
 
-                <a
-                  href={DEFAULT_BRANDING.partner_hub_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-sky-500 transition-colors group block"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-400 block font-semibold">Partner Hub (Đơn Hàng)</span>
-                    <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-sky-400" />
-                  </div>
-                  <div className="font-mono font-bold text-sky-400 text-xs mt-0.5 truncate">
-                    hub.desembre-vn.com
-                  </div>
-                </a>
-
-                <a
-                  href={DEFAULT_BRANDING.academy_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-purple-500 transition-colors group block"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-400 block font-semibold">DESEMBRE Academy</span>
-                    <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-purple-400" />
-                  </div>
-                  <div className="font-mono font-bold text-purple-400 text-xs mt-0.5 truncate">
-                    training.desembre-vn.com
-                  </div>
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* =========================================================================
-          BLOCK 2: OFFICIAL PRODUCT & TRUST PANEL (Two-Column Layout)
-          ========================================================================= */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column: Danh mục sản phẩm chính thức */}
-          <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm flex flex-col justify-between space-y-6">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-bold">
-                  <Layers className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                    Danh mục sản phẩm chính thức
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Hệ thống dòng sản phẩm chuyên nghiệp dành cho Spa, Clinic và tiêu dùng cá nhân.
-                  </p>
-                </div>
-              </div>
-
-              {/* 8 Category Chips / Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 pt-2">
-                {OFFICIAL_CATEGORIES.map((cat, idx) => (
-                  <Link
-                    key={idx}
-                    to={`/official?category=${encodeURIComponent(cat.query)}`}
-                    className="p-3.5 rounded-2xl bg-slate-50 hover:bg-sky-50/80 border border-slate-100 hover:border-sky-200 transition-all group flex flex-col justify-between"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs sm:text-sm text-slate-800 group-hover:text-sky-800 transition-colors">
-                        {cat.name}
+                  return (
+                    <button
+                      key={cat.id}
+                      onClick={() => handleSelectCategory(cat.id)}
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${
+                        isActive
+                          ? "bg-sky-600 text-white font-bold shadow-sm shadow-sky-600/20 translate-x-0.5"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      }`}
+                    >
+                      <span className="truncate pr-2">{cat.name}</span>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                          isActive
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {cat.count}
                       </span>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-600 transition-transform group-hover:translate-x-0.5" />
-                    </div>
-                    <span className="text-[11px] text-slate-500 mt-1 font-medium">
-                      {cat.count}
-                    </span>
-                  </Link>
-                ))}
+                    </button>
+                  );
+                })}
+              </nav>
+
+              {/* Sidebar Trust Guarantee Box */}
+              <div className="pt-3 border-t border-slate-100 space-y-2 text-[11px] text-slate-500">
+                <div className="flex items-center gap-1.5 text-slate-700 font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span>100% Chính hãng Hàn Quốc</span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-normal">
+                  Đầy đủ công bố mỹ phẩm & tem phụ tiếng Việt hợp quy.
+                </p>
+              </div>
+            </div>
+          </aside>
+
+          {/* ── RIGHT MAIN CONTENT AREA ──────────────────────────────────── */}
+          <main className="lg:col-span-9 space-y-6">
+            {/* Toolbar: Search + Mobile Category Chips + Count */}
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-4 sm:p-5 shadow-xs space-y-4">
+              {/* Search Bar Input */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Tìm sản phẩm, công dụng, hoạt chất..."
+                  className="w-full pl-11 pr-10 py-3 bg-slate-50 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 border border-slate-200/90 transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Mobile / Tablet Horizontal Category Chips */}
+              <div className="lg:hidden space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <Filter className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Danh mục:</span>
+                </div>
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+                  {categoryNavItems.map((cat) => {
+                    const isActive =
+                      selectedCategory === cat.id ||
+                      (cat.id !== "all" && selectedCategory === cat.name);
+
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => handleSelectCategory(cat.id)}
+                        className={`text-xs px-3.5 py-1.5 rounded-full font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                          isActive
+                            ? "bg-sky-600 text-white shadow-xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        <span>{cat.name}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                            isActive ? "bg-white/20 text-white" : "bg-white text-slate-500"
+                          }`}
+                        >
+                          {cat.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Product Count & Filter Summary */}
+              <div className="flex items-center justify-between pt-1 text-xs text-slate-500 border-t border-slate-100">
+                <span>
+                  Hiển thị <strong className="text-slate-900 font-bold">{displayedProducts.length}</strong> sản phẩm chính thức
+                </span>
+                {(selectedCategory !== "all" || searchQuery) && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      handleSelectCategory("all");
+                    }}
+                    className="text-sky-600 hover:text-sky-800 font-semibold"
+                  >
+                    Xóa bộ lọc
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Left CTA */}
-            <div className="pt-2 border-t border-slate-100">
-              <Link
-                to="/official"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-sky-700 text-white font-bold text-xs sm:text-sm px-6 py-3.5 rounded-xl transition-all shadow-sm"
-              >
-                <span>Khám phá danh mục</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-
-          {/* Right Column: Cam kết xác minh */}
-          <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-slate-950 to-sky-950 text-white rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-md flex flex-col justify-between space-y-6">
-            <div className="space-y-5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-400/30 flex items-center justify-center font-bold">
-                  <ShieldCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-                    Cam kết xác minh
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Nguyên tắc hiển thị thông tin minh bạch và trung thực.
-                  </p>
-                </div>
+            {/* Product Grid Results */}
+            {loading ? (
+              <div className="text-center py-24 bg-white rounded-3xl border border-slate-200/90 space-y-3 shadow-xs">
+                <Package className="w-8 h-8 text-sky-500 animate-pulse mx-auto" />
+                <p className="text-slate-600 font-semibold text-sm">
+                  Đang nạp danh mục sản phẩm chính hãng...
+                </p>
               </div>
-
-              {/* Specified Bullet List */}
-              <ul className="space-y-3.5 pt-1">
-                <li className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-200 leading-relaxed">
-                    Thông tin sản phẩm lấy từ hệ thống dữ liệu chính thức.
-                  </span>
-                </li>
-
-                <li className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                  <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-200 leading-relaxed">
-                    Hình ảnh sản phẩm đồng bộ từ DESEMBRE Partner Hub.
-                  </span>
-                </li>
-
-                <li className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                  <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-200 leading-relaxed">
-                    Nội dung công khai đã được kiểm duyệt trước khi hiển thị.
-                  </span>
-                </li>
-
-                <li className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                  <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-200 leading-relaxed">
-                    Không hiển thị guidebook thô, ghi chú nội bộ hoặc kịch bản bán hàng.
-                  </span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Right CTA Links */}
-            <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row gap-2.5">
-              <a
-                href={DEFAULT_BRANDING.partner_hub_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-1.5 p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors border border-slate-700"
-              >
-                <span>Partner Hub</span>
-                <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
-              </a>
-
-              <a
-                href={DEFAULT_BRANDING.academy_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-1.5 p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors border border-slate-700"
-              >
-                <span>DESEMBRE Academy</span>
-                <ExternalLink className="w-3.5 h-3.5 text-purple-400" />
-              </a>
-            </div>
-          </div>
+            ) : (
+              <CatalogProductGrid
+                products={displayedProducts}
+                onSelect={(prod) => setSelectedProduct(prod)}
+                onResetFilters={() => {
+                  setSearchQuery("");
+                  handleSelectCategory("all");
+                }}
+              />
+            )}
+          </main>
         </div>
-      </section>
+      </div>
+
+      {/* ── 3. PRODUCT DETAIL MODAL (Public Safe) ─────────────────────────── */}
+      <ProductDetailModal
+        product={selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+      />
     </div>
   );
 }

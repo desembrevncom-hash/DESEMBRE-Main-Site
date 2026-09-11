@@ -2,7 +2,7 @@ import { MainSiteProduct } from "@/types/catalog";
 import { CatalogProductImage } from "./CatalogProductImage";
 import { formatCurrencyVND } from "@/lib/utils";
 import { DEFAULT_BRANDING } from "@/config/branding";
-import { X, CheckCircle2, AlertCircle, ShieldCheck, Sparkles, ExternalLink, MessageCircle } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, ShieldCheck, Sparkles, MessageCircle, Phone } from "lucide-react";
 
 interface Props {
   product: MainSiteProduct | null;
@@ -14,7 +14,6 @@ export function ProductDetailModal({ product, onClose }: Props) {
 
   const kn = product.knowledge;
   const ingredients = kn?.ingredient_highlights || [];
-  const skinConcerns = kn?.skin_concerns || [];
   const skinTypes = kn?.skin_types || [];
 
   return (
@@ -41,50 +40,54 @@ export function ProductDetailModal({ product, onClose }: Props) {
             </div>
 
             {/* Quick Badges */}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {skinTypes.map((st, i) => (
-                <span key={i} className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-medium">
-                  {st}
-                </span>
-              ))}
-            </div>
-
-            {/* Sizes & Variants */}
-            <div className="mt-6 space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                Quy cách đóng gói
-              </span>
-              <div className="flex flex-col gap-2">
-                {product.retailVariants.map((v) => (
-                  <div key={v.id} className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-slate-800">
-                      Bản Niêm yết ({v.size_label || "Tiêu chuẩn"})
-                    </span>
-                    {v.price ? (
-                      <span className="font-bold text-sky-700">{formatCurrencyVND(v.price)}</span>
-                    ) : (
-                      <span className="text-slate-400">Liên hệ</span>
-                    )}
-                  </div>
-                ))}
-                {product.salonVariants.map((v) => (
-                  <div key={v.id} className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-purple-800">
-                      Bản Chuyên nghiệp Salon ({v.size_label || "Chuyên nghiệp"})
-                    </span>
-                    {v.price ? (
-                      <span className="font-bold text-purple-700">{formatCurrencyVND(v.price)}</span>
-                    ) : (
-                      <span className="text-slate-400">Chỉ dành cho Spa/Salon</span>
-                    )}
-                  </div>
+            {skinTypes.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {skinTypes.map((st, i) => (
+                  <span key={i} className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-medium">
+                    {st}
+                  </span>
                 ))}
               </div>
-            </div>
+            )}
+
+            {/* Sizes & Variants */}
+            {(product.retailVariants.length > 0 || product.salonVariants.length > 0) && (
+              <div className="mt-6 space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  Quy cách đóng gói
+                </span>
+                <div className="flex flex-col gap-2">
+                  {product.retailVariants.map((v) => (
+                    <div key={v.id} className="flex justify-between items-center text-xs">
+                      <span className="font-semibold text-slate-800">
+                        Bản Tiêu chuẩn ({v.size_label || "Retail"})
+                      </span>
+                      {v.price ? (
+                        <span className="font-bold text-sky-700">{formatCurrencyVND(v.price)}</span>
+                      ) : (
+                        <span className="text-slate-400">Liên hệ</span>
+                      )}
+                    </div>
+                  ))}
+                  {product.salonVariants.map((v) => (
+                    <div key={v.id} className="flex justify-between items-center text-xs">
+                      <span className="font-semibold text-purple-800">
+                        Bản Chuyên nghiệp Salon ({v.size_label || "Salon"})
+                      </span>
+                      {v.price ? (
+                        <span className="font-bold text-purple-700">{formatCurrencyVND(v.price)}</span>
+                      ) : (
+                        <span className="text-slate-400">Dành cho Spa / Clinic</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right: Info & Description */}
-          <div className="flex flex-col space-y-5">
+          <div className="flex flex-col space-y-4">
             <div>
               <span className="text-[11px] font-bold text-sky-600 uppercase tracking-wider">
                 {product.brand_name || "DESEMBRE"} · {product.category_name || "Dược mỹ phẩm"}
@@ -157,16 +160,14 @@ export function ProductDetailModal({ product, onClose }: Props) {
               </div>
             )}
 
-            {/* CTAs */}
+            {/* Public CTAs */}
             <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3 mt-auto">
               <a
-                href={DEFAULT_BRANDING.partner_hub_url}
-                target="_blank"
-                rel="noopener noreferrer"
+                href={`tel:${DEFAULT_BRANDING.hotline.replace(/\s+/g, "")}`}
                 className="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm text-center"
               >
-                <span>Đăng nhập Partner Hub</span>
-                <ExternalLink className="w-3.5 h-3.5" />
+                <Phone className="w-3.5 h-3.5" />
+                <span>Hotline: {DEFAULT_BRANDING.hotline}</span>
               </a>
 
               <a
