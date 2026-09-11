@@ -20,7 +20,7 @@ export const DEFAULT_BRANDING: BrandSettings = {
   logo_mark_url: "/favicon.png",
   favicon_url: "/favicon.png",
   apple_touch_icon_url: "/favicon.png",
-  hotline: "0988 565 678",
+  hotline: "0333 60 26 26",
   email: "contact@desembre-vn.com",
   address: "Tầng 5, Tòa nhà Desembre, Hà Nội, Việt Nam",
   partner_hub_url: import.meta.env.VITE_PARTNER_HUB_URL || "https://hub.desembre-vn.com",
