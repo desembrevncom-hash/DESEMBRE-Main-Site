@@ -6,10 +6,13 @@ import { OfficialCatalogPage } from "@/pages/OfficialCatalogPage";
 export default function App() {
   return (
     <Routes>
+      {/* Standalone Full-Viewport Cinematic Verification Landing */}
+      <Route path="/official" element={<OfficialCatalogPage />} />
+
+      {/* Main Standard Layout Pages */}
       <Route path="/" element={<Layout />}>
-        {/* Active Launch MVP Pages */}
+        {/* Active Launch MVP Verification Home */}
         <Route index element={<HomePage />} />
-        <Route path="official" element={<OfficialCatalogPage />} />
 
         {/* Backward Compatibility & Hidden Page Redirects */}
         <Route path="san-pham" element={<Navigate to="/official" replace />} />
