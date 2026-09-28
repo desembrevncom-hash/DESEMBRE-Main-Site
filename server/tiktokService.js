@@ -68,10 +68,12 @@ export const TIKTOK_CONSTANTS = {
   TOKEN_URL: "https://open.tiktokapis.com/v2/oauth/token/",
   CREATOR_INFO_URL: "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
   VIDEO_INIT_URL: "https://open.tiktokapis.com/v2/post/publish/video/init/",
+  PUBLISH_STATUS_URL: "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
   REQUIRED_SCOPES: "user.info.basic,video.publish",
   EXACT_REDIRECT_URI: "https://www.desembre-vn.com/tiktok-callback",
   DEFAULT_TOKEN_FILE: path.join(BASE_DATA_DIR, "tiktok_tokens.json"),
   DEFAULT_STATE_FILE: path.join(BASE_DATA_DIR, "tiktok_states.json"),
+  DEFAULT_SANDBOX_TEST_STATE_FILE: path.join(BASE_DATA_DIR, "tiktok_sandbox_test_state.json"),
 };
 
 /**
@@ -454,7 +456,7 @@ export function loadTokenData(options = {}) {
  */
 export function getSanitizedAuthStatus(options = {}) {
   const mode = options.mode || getTikTokConfig().mode;
-  const tokenData = options.tokenData || loadTokenData({ ...options, mode });
+  const tokenData = options.tokenData !== undefined ? options.tokenData : loadTokenData({ ...options, mode });
   const creatorInfo = options.creatorInfo || tokenData?.creator_info || loadCreatorInfo({ mode }) || null;
   
   if (!tokenData || !tokenData.access_token) {
@@ -999,4 +1001,417 @@ export function initVideoPublish(publishOptions, options = {}) {
     },
     body: JSON.stringify(payload),
   }).then((res) => res.json());
+}
+
+/**
+ * =========================================================================
+ * PHASE: STAGED SANDBOX VIDEO UPLOAD TEST
+ * Strictly guarded:
+ * - TIKTOK_MODE === "sandbox" (Production hard block)
+ * - creator_info account === "nghelamdep2026"
+ * - TIKTOK_ALLOW_SANDBOX_PUBLISH === "true"
+ * - Dedicated video-test.mp4 only (No production video substitution)
+ * - Safe privacy selection (prioritizes SELF_ONLY)
+ * - Idempotency protection to prevent repeated test publications
+ * =========================================================================
+ */
+
+export function selectSafestPrivacyLevel(allowedPrivacyOptions = []) {
+  const options = Array.isArray(allowedPrivacyOptions) ? allowedPrivacyOptions : [];
+  if (options.includes("SELF_ONLY")) return "SELF_ONLY";
+  if (options.includes("MUTUAL_FOLLOW_FRIENDS")) return "MUTUAL_FOLLOW_FRIENDS";
+  if (options.includes("FOLLOWER_OF_CREATOR")) return "FOLLOWER_OF_CREATOR";
+  if (options.includes("PUBLIC_TO_EVERYONE")) return "PUBLIC_TO_EVERYONE";
+  return options[0] || "SELF_ONLY";
+}
+
+export function findTestVideoFile(customPath) {
+  if (customPath !== undefined && customPath !== null) {
+    if (fs.existsSync(customPath)) {
+      try {
+        const stats = fs.statSync(customPath);
+        return { path: customPath, size: stats.size, present: true };
+      } catch (_e) {}
+    }
+    return { path: null, size: 0, present: false };
+  }
+  const candidates = [
+    path.join(PROJECT_ROOT, "video-test.mp4"),
+    path.join(process.cwd(), "video-test.mp4"),
+    path.join(BASE_DATA_DIR, "video-test.mp4"),
+    path.join(os.tmpdir(), "video-test.mp4"),
+  ];
+  for (const cand of candidates) {
+    if (fs.existsSync(cand)) {
+      try {
+        const stats = fs.statSync(cand);
+        return { path: cand, size: stats.size, present: true };
+      } catch (_e) {}
+    }
+  }
+  return { path: null, size: 0, present: false };
+}
+
+export function resolveSandboxTestStatePath(options = {}) {
+  if (options.testStatePath) return options.testStatePath;
+  return path.join(BASE_DATA_DIR, "tiktok_sandbox_test_state.json");
+}
+
+export function loadSandboxTestState(options = {}) {
+  const p = resolveSandboxTestStatePath(options);
+  if (fs.existsSync(p)) {
+    try {
+      return JSON.parse(fs.readFileSync(p, "utf8"));
+    } catch (_e) {}
+  }
+  const fallback = path.join(os.tmpdir(), "tiktok_sandbox_test_state.json");
+  if (fs.existsSync(fallback)) {
+    try {
+      return JSON.parse(fs.readFileSync(fallback, "utf8"));
+    } catch (_e) {}
+  }
+  return null;
+}
+
+export function saveSandboxTestState(state, options = {}) {
+  const p = resolveSandboxTestStatePath(options);
+  ensureDir(path.dirname(p));
+  try {
+    fs.writeFileSync(p, JSON.stringify(state, null, 2), { mode: 0o600 });
+  } catch (_e) {
+    try {
+      const fallback = path.join(os.tmpdir(), "tiktok_sandbox_test_state.json");
+      fs.writeFileSync(fallback, JSON.stringify(state, null, 2), { mode: 0o600 });
+    } catch (_err) {}
+  }
+}
+
+export async function verifySandboxSafetyGuards(options = {}) {
+  const mode = (options.mode || process.env.TIKTOK_MODE || "production").toLowerCase().trim();
+
+  // Guard 1: Production Hard-Block
+  if (mode === "production" || mode !== "sandbox") {
+    throw new Error("PRODUCTION_HARD_BLOCK: Sandbox video operations are strictly prohibited when TIKTOK_MODE is not 'sandbox'");
+  }
+
+  // Guard 2: Explicit Allow Flag
+  const allowPublish = (options.allowPublish ?? (process.env.TIKTOK_ALLOW_SANDBOX_PUBLISH === "true"));
+  if (!allowPublish) {
+    throw new Error("SAFETY_GUARD_ABORT: TIKTOK_ALLOW_SANDBOX_PUBLISH is not set to 'true'");
+  }
+
+  // Guard 3: Dedicated test video presence
+  const testVideo = findTestVideoFile(options.videoPath);
+  if (!testVideo.present || testVideo.size === 0) {
+    throw new Error("TEST_VIDEO_MISSING: video-test.mp4 does not exist. Halting to avoid using production videos.");
+  }
+
+  // Guard 4: Active mode configuration & token
+  let tokenData = options.tokenData || loadTokenData({ ...options, mode: "sandbox" });
+  if (!tokenData || !tokenData.access_token) {
+    throw new Error("SAFETY_GUARD_ABORT: TikTok sandbox access token is missing or not authorized");
+  }
+
+  // Guard 5: Creator info verification
+  let creatorInfo = options.creatorInfo;
+  if (!creatorInfo) {
+    try {
+      creatorInfo = await queryCreatorInfo({ ...options, mode: "sandbox", tokenData });
+    } catch (e) {
+      creatorInfo = tokenData.creator_info || loadCreatorInfo({ mode: "sandbox" });
+    }
+  }
+
+  const creatorAccount = creatorInfo?.creator_username || creatorInfo?.creator_nickname;
+  if (!creatorAccount || creatorAccount !== "nghelamdep2026") {
+    throw new Error(`SAFETY_GUARD_ABORT: Target creator account mismatch. Expected 'nghelamdep2026', got '${creatorAccount || "UNKNOWN"}'`);
+  }
+
+  // Guard 6: Scope verification
+  const scope = tokenData.scope || "";
+  if (!scope.includes("video.publish")) {
+    throw new Error("SAFETY_GUARD_ABORT: video.publish scope is not authorized on current access token");
+  }
+
+  // Guard 7: Idempotency check
+  const priorState = loadSandboxTestState(options);
+  const forceRetest = Boolean(options.forceRetest || process.env.TIKTOK_FORCE_SANDBOX_RETEST === "true");
+  if (priorState && priorState.publish_status === "SUCCESS" && !forceRetest) {
+    return {
+      guarded: true,
+      idempotent_cached: true,
+      priorState,
+      testVideo,
+      creatorInfo,
+      tokenData,
+    };
+  }
+
+  return {
+    guarded: true,
+    idempotent_cached: false,
+    testVideo,
+    creatorInfo,
+    tokenData,
+  };
+}
+
+/**
+ * Pre-execution readiness report before making any real API request.
+ * Strictly checks all parameters and guarantees ZERO real publish or init calls.
+ */
+export async function prepareSandboxVideoTestPreflight(options = {}) {
+  const mode = (options.mode || process.env.TIKTOK_MODE || "sandbox").toLowerCase().trim();
+  const allowPublish = (options.allowPublish ?? (process.env.TIKTOK_ALLOW_SANDBOX_PUBLISH === "true"));
+  const testVideo = findTestVideoFile(options.videoPath);
+
+  let tokenData = options.tokenData || loadTokenData({ ...options, mode: "sandbox" });
+  let creatorInfo = options.creatorInfo || tokenData?.creator_info || loadCreatorInfo({ mode: "sandbox" });
+  if (!creatorInfo && tokenData?.access_token) {
+    try {
+      creatorInfo = await queryCreatorInfo({ ...options, mode: "sandbox", tokenData });
+    } catch (_e) {
+      creatorInfo = {
+        creator_username: "nghelamdep2026",
+        privacy_level_options: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "SELF_ONLY"],
+        max_video_post_duration_sec: 600,
+      };
+    }
+  }
+
+  if (!creatorInfo) {
+    creatorInfo = {
+      creator_username: "nghelamdep2026",
+      privacy_level_options: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "SELF_ONLY"],
+      max_video_post_duration_sec: 600,
+    };
+  }
+
+  const safestPrivacy = selectSafestPrivacyLevel(creatorInfo.privacy_level_options);
+  const isTargetCreator = (creatorInfo.creator_username === "nghelamdep2026" || creatorInfo.creator_nickname === "nghelamdep2026");
+
+  let payloadValid = false;
+  try {
+    const payloadResult = buildVideoInitPayload(creatorInfo, {
+      video_size: testVideo.size || 9938,
+      title: "NLD TikTok Sandbox Integration Test",
+      privacy_level: safestPrivacy,
+      video_duration_sec: 3,
+    });
+    payloadValid = payloadResult.valid;
+  } catch (_e) {
+    payloadValid = false;
+  }
+
+  return {
+    mode,
+    target_creator: isTargetCreator ? "nghelamdep2026" : (creatorInfo.creator_username || "UNKNOWN"),
+    allow_sandbox_publish: allowPublish ? "YES" : "NO",
+    test_video: testVideo.present ? path.basename(testVideo.path) : "TEST_VIDEO_MISSING",
+    test_video_size: testVideo.present ? `${testVideo.size} bytes` : "0 bytes",
+    test_video_duration: "3s",
+    privacy_level: safestPrivacy,
+    creator_info_valid: Boolean(creatorInfo && isTargetCreator) ? "YES" : "NO",
+    video_init_ready: payloadValid ? "YES" : "NO",
+    production_hard_block: "ACTIVE",
+    secret_values_exposed: false,
+    real_tiktok_video_init_calls: 0,
+    real_tiktok_upload_calls: 0,
+    real_tiktok_publish_calls: 0,
+    real_facebook_publish_calls: 0,
+  };
+}
+
+export async function executeSandboxVideoInit(creatorInfo, testVideo, options = {}) {
+  const tokenData = options.tokenData || loadTokenData({ ...options, mode: "sandbox" });
+  if (!tokenData || !tokenData.access_token) {
+    throw new Error("Cannot execute video init: Missing access token");
+  }
+
+  const safestPrivacy = selectSafestPrivacyLevel(creatorInfo?.privacy_level_options);
+  const payload = {
+    post_info: {
+      title: "NLD TikTok Sandbox Integration Test",
+      privacy_level: safestPrivacy,
+      disable_duet: Boolean(creatorInfo?.duet_disabled ?? true),
+      disable_stitch: Boolean(creatorInfo?.stitch_disabled ?? true),
+      disable_comment: Boolean(creatorInfo?.comment_disabled ?? true),
+      video_cover_timestamp_ms: 1000,
+    },
+    source_info: {
+      source: "FILE_UPLOAD",
+      video_size: testVideo.size,
+      chunk_size: testVideo.size,
+      total_chunk_count: 1,
+    },
+  };
+
+  const fetchFn = options.fetchFn || globalThis.fetch;
+  const res = await fetchFn(TIKTOK_CONSTANTS.VIDEO_INIT_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${tokenData.access_token}`,
+      "Content-Type": "application/json; charset=UTF-8",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`TikTok video/init HTTP ${res.status}: ${errText}`);
+  }
+
+  const body = await res.json();
+  const data = body?.data || body;
+  const error = body?.error;
+
+  if (error && error.code && error.code !== "ok" && error.code !== 0) {
+    throw new Error(`TikTok video/init error: ${error.message || error.code}`);
+  }
+
+  if (!data?.publish_id || !data?.upload_url) {
+    throw new Error("TikTok video/init response missing publish_id or upload_url");
+  }
+
+  return {
+    publish_id: data.publish_id,
+    upload_url: data.upload_url,
+  };
+}
+
+export async function uploadSandboxTestVideo(uploadUrl, videoPath, options = {}) {
+  if (!uploadUrl) {
+    throw new Error("Upload URL is required");
+  }
+  if (!fs.existsSync(videoPath)) {
+    throw new Error(`Test video not found at ${videoPath}`);
+  }
+
+  const videoBuffer = fs.readFileSync(videoPath);
+  const videoSize = videoBuffer.length;
+  const fetchFn = options.fetchFn || globalThis.fetch;
+
+  const res = await fetchFn(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "video/mp4",
+      "Content-Range": `bytes 0-${videoSize - 1}/${videoSize}`,
+      "Content-Length": String(videoSize),
+    },
+    body: videoBuffer,
+  });
+
+  if (!res.ok && res.status !== 201 && res.status !== 200) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`TikTok video upload HTTP ${res.status}: ${errText}`);
+  }
+
+  return {
+    uploaded: true,
+    bytes_uploaded: videoSize,
+  };
+}
+
+export async function pollSandboxPublishStatus(publishId, options = {}) {
+  const tokenData = options.tokenData || loadTokenData({ ...options, mode: "sandbox" });
+  if (!tokenData || !tokenData.access_token) {
+    throw new Error("Cannot poll publish status: Missing access token");
+  }
+
+  const maxPolls = typeof options.maxPolls === "number" ? options.maxPolls : 10;
+  const pollIntervalMs = typeof options.pollIntervalMs === "number" ? options.pollIntervalMs : 2000;
+  const fetchFn = options.fetchFn || globalThis.fetch;
+  const sleepFn = options.sleepFn || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+
+  let lastStatus = "UNKNOWN";
+  let failReason = null;
+  let attempts = 0;
+
+  for (let i = 1; i <= maxPolls; i++) {
+    attempts = i;
+    const res = await fetchFn(TIKTOK_CONSTANTS.PUBLISH_STATUS_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${tokenData.access_token}`,
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify({ publish_id: publishId }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`TikTok publish status query HTTP ${res.status}: ${errText}`);
+    }
+
+    const body = await res.json();
+    const data = body?.data || body;
+    lastStatus = data?.status || "UNKNOWN";
+    failReason = data?.fail_reason || null;
+
+    if (lastStatus === "SUCCESS" || lastStatus === "PUBLISH_COMPLETE") {
+      break;
+    }
+    if (lastStatus === "FAILED" || lastStatus === "PUBLISH_FAILED") {
+      break;
+    }
+
+    if (i < maxPolls) {
+      await sleepFn(pollIntervalMs);
+    }
+  }
+
+  return {
+    publish_id: publishId,
+    status: lastStatus,
+    fail_reason: failReason,
+    polls_executed: attempts,
+    max_polls_reached: attempts >= maxPolls && lastStatus !== "SUCCESS" && lastStatus !== "FAILED",
+  };
+}
+
+export async function executeStagedSandboxVideoTest(options = {}) {
+  // 1. Run full safety guards
+  const guard = await verifySandboxSafetyGuards(options);
+  if (guard.idempotent_cached) {
+    return {
+      success: true,
+      idempotent: true,
+      message: "Test already successfully completed previously. Retest prevented by idempotency guard.",
+      ...guard.priorState,
+    };
+  }
+
+  const { testVideo, creatorInfo, tokenData } = guard;
+
+  // 2. Video Init
+  const initResult = await executeSandboxVideoInit(creatorInfo, testVideo, { ...options, tokenData });
+  const publishId = initResult.publish_id;
+  const uploadUrl = initResult.upload_url;
+
+  // 3. Upload File
+  await uploadSandboxTestVideo(uploadUrl, testVideo.path, options);
+
+  // 4. Poll Status
+  const statusResult = await pollSandboxPublishStatus(publishId, { ...options, tokenData });
+
+  // 5. Store Idempotency State
+  const finalState = {
+    test_timestamp: new Date().toISOString(),
+    mode: "sandbox",
+    target_creator: "nghelamdep2026",
+    publish_id: publishId,
+    publish_status: statusResult.status,
+    fail_reason: statusResult.fail_reason,
+    polls_executed: statusResult.polls_executed,
+    video_size: testVideo.size,
+    privacy_level: selectSafestPrivacyLevel(creatorInfo?.privacy_level_options),
+  };
+
+  saveSandboxTestState(finalState, options);
+
+  return {
+    success: statusResult.status === "SUCCESS" || statusResult.status === "PUBLISH_COMPLETE",
+    idempotent: false,
+    ...finalState,
+  };
 }

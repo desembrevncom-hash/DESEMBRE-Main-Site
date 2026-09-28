@@ -24,6 +24,16 @@ import {
   buildVideoInitPayload,
   runPreflightCheck,
   initVideoPublish,
+  selectSafestPrivacyLevel,
+  findTestVideoFile,
+  verifySandboxSafetyGuards,
+  prepareSandboxVideoTestPreflight,
+  executeSandboxVideoInit,
+  uploadSandboxTestVideo,
+  pollSandboxPublishStatus,
+  executeStagedSandboxVideoTest,
+  loadSandboxTestState,
+  saveSandboxTestState,
 } from "../server/tiktokService.js";
 
 // Setup isolated temp directory for test state and tokens
@@ -722,5 +732,294 @@ test("24. getSanitizedAuthStatus returns the exact 11 fields requested without l
   assert.equal(status.authorized, true);
   assert.equal(status.video_publish_authorized, true);
 });
+
+test("25. selectSafestPrivacyLevel prioritizes SELF_ONLY for sandbox testing", () => {
+  assert.equal(selectSafestPrivacyLevel(["PUBLIC_TO_EVERYONE", "SELF_ONLY", "MUTUAL_FOLLOW_FRIENDS"]), "SELF_ONLY");
+  assert.equal(selectSafestPrivacyLevel(["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"]), "MUTUAL_FOLLOW_FRIENDS");
+  assert.equal(selectSafestPrivacyLevel(["PUBLIC_TO_EVERYONE"]), "PUBLIC_TO_EVERYONE");
+  assert.equal(selectSafestPrivacyLevel([]), "SELF_ONLY");
+});
+
+test("26. verifySandboxSafetyGuards enforces production mode hard-block", async () => {
+  await assert.rejects(
+    async () => {
+      await verifySandboxSafetyGuards({ mode: "production" });
+    },
+    /PRODUCTION_HARD_BLOCK/
+  );
+});
+
+test("27. verifySandboxSafetyGuards enforces TIKTOK_ALLOW_SANDBOX_PUBLISH=true", async () => {
+  await assert.rejects(
+    async () => {
+      await verifySandboxSafetyGuards({ mode: "sandbox", allowPublish: false });
+    },
+    /SAFETY_GUARD_ABORT: TIKTOK_ALLOW_SANDBOX_PUBLISH is not set to 'true'/
+  );
+});
+
+test("28. verifySandboxSafetyGuards aborts with TEST_VIDEO_MISSING if video-test.mp4 is missing", async () => {
+  await assert.rejects(
+    async () => {
+      await verifySandboxSafetyGuards({
+        mode: "sandbox",
+        allowPublish: true,
+        videoPath: "/nonexistent/path/to/video-test.mp4",
+      });
+    },
+    /TEST_VIDEO_MISSING/
+  );
+});
+
+test("29. verifySandboxSafetyGuards aborts if creator account is not nghelamdep2026", async () => {
+  const { tmpDir } = createTempFiles();
+  const dummyVideo = path.join(tmpDir, "video-test.mp4");
+  fs.writeFileSync(dummyVideo, "test-content");
+
+  try {
+    await assert.rejects(
+      async () => {
+        await verifySandboxSafetyGuards({
+          mode: "sandbox",
+          allowPublish: true,
+          videoPath: dummyVideo,
+          tokenData: {
+            access_token: "mock_token",
+            scope: "user.info.basic,video.publish",
+          },
+          creatorInfo: {
+            creator_username: "wrong_account_user",
+          },
+        });
+      },
+      /Target creator account mismatch/
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("30. prepareSandboxVideoTestPreflight returns complete pre-execution report with 0 real publish calls", async () => {
+  const preflight = await prepareSandboxVideoTestPreflight({
+    mode: "sandbox",
+    allowPublish: true,
+  });
+
+  assert.equal(preflight.mode, "sandbox");
+  assert.equal(preflight.target_creator, "nghelamdep2026");
+  assert.equal(preflight.allow_sandbox_publish, "YES");
+  assert.equal(preflight.test_video, "video-test.mp4");
+  assert.equal(preflight.test_video_duration, "3s");
+  assert.equal(preflight.privacy_level, "SELF_ONLY");
+  assert.equal(preflight.production_hard_block, "ACTIVE");
+  assert.equal(preflight.secret_values_exposed, false);
+  assert.equal(preflight.real_tiktok_video_init_calls, 0);
+  assert.equal(preflight.real_tiktok_upload_calls, 0);
+  assert.equal(preflight.real_tiktok_publish_calls, 0);
+  assert.equal(preflight.real_facebook_publish_calls, 0);
+});
+
+test("31. executeSandboxVideoInit correctly formats POST to video/init with FILE_UPLOAD and safest privacy", async () => {
+  let capturedBody = null;
+  let capturedHeaders = null;
+  const mockFetch = async (_url, opts) => {
+    capturedHeaders = opts.headers;
+    capturedBody = JSON.parse(opts.body);
+    return {
+      ok: true,
+      json: async () => ({
+        data: {
+          publish_id: "v_pub_sb_123456",
+          upload_url: "https://open-upload.tiktok.com/upload/sb_mock_upload_id",
+        },
+        error: { code: "ok" },
+      }),
+    };
+  };
+
+  const res = await executeSandboxVideoInit(
+    {
+      creator_username: "nghelamdep2026",
+      privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+      duet_disabled: true,
+      stitch_disabled: true,
+      comment_disabled: true,
+    },
+    { size: 9938 },
+    {
+      tokenData: { access_token: "sb_tok_init" },
+      fetchFn: mockFetch,
+    }
+  );
+
+  assert.equal(res.publish_id, "v_pub_sb_123456");
+  assert.equal(res.upload_url, "https://open-upload.tiktok.com/upload/sb_mock_upload_id");
+  assert.equal(capturedHeaders.Authorization, "Bearer sb_tok_init");
+  assert.equal(capturedBody.post_info.title, "NLD TikTok Sandbox Integration Test");
+  assert.equal(capturedBody.post_info.privacy_level, "SELF_ONLY");
+  assert.equal(capturedBody.source_info.source, "FILE_UPLOAD");
+  assert.equal(capturedBody.source_info.video_size, 9938);
+});
+
+test("32. uploadSandboxTestVideo streams test video file with Content-Range and Content-Length headers", async () => {
+  const { tmpDir } = createTempFiles();
+  const testFile = path.join(tmpDir, "video-test.mp4");
+  fs.writeFileSync(testFile, Buffer.alloc(5000, 1));
+
+  try {
+    let capturedHeaders = null;
+    let capturedMethod = null;
+    const mockFetch = async (_url, opts) => {
+      capturedHeaders = opts.headers;
+      capturedMethod = opts.method;
+      return { ok: true, status: 200 };
+    };
+
+    const res = await uploadSandboxTestVideo("https://open-upload.tiktok.com/upload_stream", testFile, {
+      fetchFn: mockFetch,
+    });
+
+    assert.equal(res.uploaded, true);
+    assert.equal(res.bytes_uploaded, 5000);
+    assert.equal(capturedMethod, "PUT");
+    assert.equal(capturedHeaders["Content-Type"], "video/mp4");
+    assert.equal(capturedHeaders["Content-Length"], "5000");
+    assert.equal(capturedHeaders["Content-Range"], "bytes 0-4999/5000");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("33. pollSandboxPublishStatus polls up to max 10 times and halts on SUCCESS", async () => {
+  let callCount = 0;
+  const mockFetch = async () => {
+    callCount++;
+    return {
+      ok: true,
+      json: async () => ({
+        data: {
+          status: callCount >= 3 ? "SUCCESS" : "PROCESSING_UPLOAD",
+        },
+      }),
+    };
+  };
+
+  const res = await pollSandboxPublishStatus("pub_test_1", {
+    tokenData: { access_token: "sb_tok_poll" },
+    maxPolls: 10,
+    pollIntervalMs: 1,
+    sleepFn: async () => {},
+    fetchFn: mockFetch,
+  });
+
+  assert.equal(res.status, "SUCCESS");
+  assert.equal(res.polls_executed, 3);
+  assert.equal(res.max_polls_reached, false);
+});
+
+test("34. pollSandboxPublishStatus halts immediately on FAILED without continuous looping", async () => {
+  let callCount = 0;
+  const mockFetch = async () => {
+    callCount++;
+    return {
+      ok: true,
+      json: async () => ({
+        data: {
+          status: "FAILED",
+          fail_reason: "SANDBOX_MOCK_FAILURE",
+        },
+      }),
+    };
+  };
+
+  const res = await pollSandboxPublishStatus("pub_test_2", {
+    tokenData: { access_token: "sb_tok_poll" },
+    maxPolls: 10,
+    pollIntervalMs: 1,
+    sleepFn: async () => {},
+    fetchFn: mockFetch,
+  });
+
+  assert.equal(res.status, "FAILED");
+  assert.equal(res.fail_reason, "SANDBOX_MOCK_FAILURE");
+  assert.equal(res.polls_executed, 1, "Must halt immediately on failure without looping");
+});
+
+test("35. executeStagedSandboxVideoTest implements idempotency and prevents rerun unless forceRetest=true", async () => {
+  const { tmpDir } = createTempFiles();
+  const testStatePath = path.join(tmpDir, "test_state.json");
+  const testVideoPath = path.join(tmpDir, "video-test.mp4");
+  fs.writeFileSync(testVideoPath, Buffer.alloc(1024, 0));
+
+  try {
+    let initCalls = 0;
+    const mockFetch = async (url) => {
+      if (url.includes("video/init")) {
+        initCalls++;
+        return {
+          ok: true,
+          json: async () => ({
+            data: { publish_id: "idemp_pub_1", upload_url: "https://upload.test" },
+          }),
+        };
+      }
+      if (url.includes("status/fetch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: { status: "SUCCESS" },
+          }),
+        };
+      }
+      return { ok: true, status: 200 };
+    };
+
+    const firstRun = await executeStagedSandboxVideoTest({
+      mode: "sandbox",
+      allowPublish: true,
+      videoPath: testVideoPath,
+      testStatePath,
+      tokenData: {
+        access_token: "sb_tok_idemp",
+        scope: "user.info.basic,video.publish",
+      },
+      creatorInfo: {
+        creator_username: "nghelamdep2026",
+        privacy_level_options: ["SELF_ONLY"],
+      },
+      fetchFn: mockFetch,
+      sleepFn: async () => {},
+    });
+
+    assert.equal(firstRun.success, true);
+    assert.equal(firstRun.idempotent, false);
+    assert.equal(initCalls, 1);
+
+    // Second run without forceRetest: MUST BE IDEMPOTENT AND NOT CALL video/init AGAIN
+    const secondRun = await executeStagedSandboxVideoTest({
+      mode: "sandbox",
+      allowPublish: true,
+      videoPath: testVideoPath,
+      testStatePath,
+      tokenData: {
+        access_token: "sb_tok_idemp",
+        scope: "user.info.basic,video.publish",
+      },
+      creatorInfo: {
+        creator_username: "nghelamdep2026",
+        privacy_level_options: ["SELF_ONLY"],
+      },
+      fetchFn: mockFetch,
+      sleepFn: async () => {},
+    });
+
+    assert.equal(secondRun.success, true);
+    assert.equal(secondRun.idempotent, true);
+    assert.equal(initCalls, 1, "video/init must NOT be called a second time due to idempotency");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 
 
