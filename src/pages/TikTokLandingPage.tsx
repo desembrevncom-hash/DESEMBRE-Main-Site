@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 interface SanitizedStatus {
+  mode?: "sandbox" | "production";
   authorized: boolean;
   open_id_present: boolean;
   video_publish_authorized: boolean;
@@ -28,6 +29,7 @@ interface SanitizedStatus {
   access_token_expires_at: string | null;
   secret_values_exposed: boolean;
 }
+
 
 export function TikTokLandingPage() {
   const [status, setStatus] = useState<SanitizedStatus | null>(null);
@@ -147,10 +149,22 @@ export function TikTokLandingPage() {
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800/80">
             <div>
-              <span className="text-xs uppercase tracking-wider font-semibold text-slate-500 block mb-1">
-                Authorization Gateway
-              </span>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs uppercase tracking-wider font-semibold text-slate-500">
+                  Authorization Gateway
+                </span>
+                {status?.mode === "sandbox" ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40">
+                    SANDBOX (nghelamdep2026)
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
+                    PRODUCTION
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-3">
+
                 <h2 className="text-xl sm:text-2xl font-bold text-white">Trạng thái ủy quyền TikTok</h2>
                 {loading ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 text-slate-400 text-xs font-medium animate-pulse">

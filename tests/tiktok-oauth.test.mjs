@@ -82,7 +82,7 @@ test("4. OAuth state creation generates cryptographically secure unique states",
     const state2 = generateOAuthState({ stateFilePath: stateFile });
     
     assert.notEqual(state1, state2, "States must be unique");
-    assert.equal(state1.split(".").length, 3, "State must have random, timestamp, and signature components");
+    assert.ok(state1.split(".").length >= 3, "State must have random, timestamp, and signature components");
     assert.ok(state1.length > 64, "State must have sufficient cryptographic entropy");
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -356,3 +356,113 @@ test("14. Content Posting API structure is prepared for FILE_UPLOAD", async () =
   assert.equal(initPayload.source_info.source, "FILE_UPLOAD");
   assert.equal(initPayload.source_info.video_size, 15420000);
 });
+
+test("15. TIKTOK_MODE=sandbox selects Sandbox Client Key and Secret without modifying Production credentials", async () => {
+  const origMode = process.env.TIKTOK_MODE;
+  const origProdKey = process.env.TIKTOK_CLIENT_KEY;
+  const origProdSecret = process.env.TIKTOK_CLIENT_SECRET;
+  const origSbKey = process.env.TIKTOK_SANDBOX_CLIENT_KEY;
+  const origSbSecret = process.env.TIKTOK_SANDBOX_CLIENT_SECRET;
+
+  try {
+    process.env.TIKTOK_MODE = "sandbox";
+    process.env.TIKTOK_CLIENT_KEY = "prod_client_key_111";
+    process.env.TIKTOK_CLIENT_SECRET = "prod_client_sec_222";
+    process.env.TIKTOK_SANDBOX_CLIENT_KEY = "sandbox_client_key_333";
+    process.env.TIKTOK_SANDBOX_CLIENT_SECRET = "sandbox_client_sec_444";
+
+    const { getTikTokConfig, buildTikTokAuthUrl } = await import(`../server/tiktokService.js?t=${Date.now()}`);
+    const config = getTikTokConfig();
+
+    assert.equal(config.mode, "sandbox");
+    assert.equal(config.clientKey, "sandbox_client_key_333");
+    assert.equal(config.clientSecret, "sandbox_client_sec_444");
+
+    const authUrl = buildTikTokAuthUrl("state_sb_test");
+    const parsed = new URL(authUrl);
+    assert.equal(parsed.searchParams.get("client_key"), "sandbox_client_key_333");
+    assert.equal(parsed.searchParams.get("redirect_uri"), "https://www.desembre-vn.com/tiktok-callback");
+  } finally {
+    process.env.TIKTOK_MODE = origMode;
+    process.env.TIKTOK_CLIENT_KEY = origProdKey;
+    process.env.TIKTOK_CLIENT_SECRET = origProdSecret;
+    process.env.TIKTOK_SANDBOX_CLIENT_KEY = origSbKey;
+    process.env.TIKTOK_SANDBOX_CLIENT_SECRET = origSbSecret;
+  }
+});
+
+test("16. TIKTOK_MODE=production selects Production Client Key and Secret", async () => {
+  const origMode = process.env.TIKTOK_MODE;
+  const origProdKey = process.env.TIKTOK_CLIENT_KEY;
+  const origProdSecret = process.env.TIKTOK_CLIENT_SECRET;
+  const origSbKey = process.env.TIKTOK_SANDBOX_CLIENT_KEY;
+  const origSbSecret = process.env.TIKTOK_SANDBOX_CLIENT_SECRET;
+
+  try {
+    process.env.TIKTOK_MODE = "production";
+    process.env.TIKTOK_CLIENT_KEY = "prod_client_key_111";
+    process.env.TIKTOK_CLIENT_SECRET = "prod_client_sec_222";
+    process.env.TIKTOK_SANDBOX_CLIENT_KEY = "sandbox_client_key_333";
+    process.env.TIKTOK_SANDBOX_CLIENT_SECRET = "sandbox_client_sec_444";
+
+    const { getTikTokConfig, buildTikTokAuthUrl } = await import(`../server/tiktokService.js?t=${Date.now()}`);
+    const config = getTikTokConfig();
+
+    assert.equal(config.mode, "production");
+    assert.equal(config.clientKey, "prod_client_key_111");
+    assert.equal(config.clientSecret, "prod_client_sec_222");
+
+    const authUrl = buildTikTokAuthUrl("state_prod_test");
+    const parsed = new URL(authUrl);
+    assert.equal(parsed.searchParams.get("client_key"), "prod_client_key_111");
+    assert.equal(parsed.searchParams.get("redirect_uri"), "https://www.desembre-vn.com/tiktok-callback");
+  } finally {
+    process.env.TIKTOK_MODE = origMode;
+    process.env.TIKTOK_CLIENT_KEY = origProdKey;
+    process.env.TIKTOK_CLIENT_SECRET = origProdSecret;
+    process.env.TIKTOK_SANDBOX_CLIENT_KEY = origSbKey;
+    process.env.TIKTOK_SANDBOX_CLIENT_SECRET = origSbSecret;
+  }
+});
+
+test("17. Sandbox and Production callback code exchange matches active mode", async () => {
+  const { tokenFile, tmpDir } = createTempFiles();
+  try {
+    let capturedBody = "";
+    const mockFetch = async (_url, opts) => {
+      capturedBody = opts.body;
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            access_token: "act_sandbox_mock",
+            refresh_token: "rft_sandbox_mock",
+            expires_in: 86400,
+            refresh_expires_in: 31536000,
+            open_id: "sandbox_open_id_nghelamdep2026",
+            scope: "user.info.basic,video.publish",
+          },
+        }),
+      };
+    };
+
+    const status = await exchangeAuthorizationCode("sb_code_123", {
+      mode: "sandbox",
+      clientKey: "sb_key_999",
+      clientSecret: "sb_sec_888",
+      tokenFilePath: tokenFile,
+      fetchFn: mockFetch,
+    });
+
+    const params = new URLSearchParams(capturedBody);
+    assert.equal(params.get("client_key"), "sb_key_999");
+    assert.equal(params.get("client_secret"), "sb_sec_888");
+    assert.equal(params.get("redirect_uri"), "https://www.desembre-vn.com/tiktok-callback");
+    assert.equal(status.mode, "sandbox");
+    assert.equal(status.authorized, true);
+    assert.equal(status.secret_values_exposed, false);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+

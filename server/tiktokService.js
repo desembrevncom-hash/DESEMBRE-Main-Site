@@ -1,5 +1,6 @@
 /**
  * TikTok OAuth v2 and Content Posting Foundation Service
+ * Supports both Sandbox (TIKTOK_MODE=sandbox) and Production (TIKTOK_MODE=production).
  * Strictly respects Désembre Vietnam requirements:
  * - Redirect URI: https://www.desembre-vn.com/tiktok-callback
  * - Scopes: user.info.basic,video.publish
@@ -59,8 +60,6 @@ export function loadEnv(customPath) {
   }
 }
 
-
-
 // Automatically load environment on import
 loadEnv();
 
@@ -75,21 +74,39 @@ export const TIKTOK_CONSTANTS = {
   DEFAULT_STATE_FILE: path.join(BASE_DATA_DIR, "tiktok_states.json"),
 };
 
-
 /**
- * Returns configuration object without exposing secrets
+ * Returns configuration object without exposing secrets.
+ * Handles TIKTOK_MODE=sandbox and TIKTOK_MODE=production.
  */
-export function getTikTokConfig() {
-  const clientKey = (process.env.TIKTOK_CLIENT_KEY || "").trim();
-  const clientSecret = (process.env.TIKTOK_CLIENT_SECRET || "").trim();
+export function getTikTokConfig(customMode) {
+  const mode = (customMode || process.env.TIKTOK_MODE || "production").toLowerCase().trim();
+  const isSandbox = mode === "sandbox";
+
+  const clientKey = isSandbox
+    ? (process.env.TIKTOK_SANDBOX_CLIENT_KEY || "").trim()
+    : (process.env.TIKTOK_CLIENT_KEY || "").trim();
+
+  const clientSecret = isSandbox
+    ? (process.env.TIKTOK_SANDBOX_CLIENT_SECRET || "").trim()
+    : (process.env.TIKTOK_CLIENT_SECRET || "").trim();
+
   const redirectUri = (process.env.TIKTOK_REDIRECT_URI || TIKTOK_CONSTANTS.EXACT_REDIRECT_URI).trim();
 
   return {
+    mode: isSandbox ? "sandbox" : "production",
     clientKey,
     clientSecret,
     redirectUri: redirectUri || TIKTOK_CONSTANTS.EXACT_REDIRECT_URI,
-    isKeyConfigured: Boolean(clientKey && clientKey !== "your_tiktok_client_key_here"),
-    isSecretConfigured: Boolean(clientSecret && clientSecret !== "your_tiktok_client_secret_here"),
+    isKeyConfigured: Boolean(
+      clientKey &&
+      clientKey !== "your_tiktok_client_key_here" &&
+      clientKey !== "your_tiktok_sandbox_client_key_here"
+    ),
+    isSecretConfigured: Boolean(
+      clientSecret &&
+      clientSecret !== "your_tiktok_client_secret_here" &&
+      clientSecret !== "your_tiktok_sandbox_client_secret_here"
+    ),
   };
 }
 
@@ -104,11 +121,12 @@ function ensureDir(dirPath) {
 
 /**
  * Generates a cryptographically secure random OAuth state
- * Format: <random32Hex>.<timestamp>.<hmacSignature>
+ * Format: <random32Hex>.<timestamp>.<mode>.<hmacSignature>
  */
 export function generateOAuthState(options = {}) {
-  const config = getTikTokConfig();
-  const stateFilePath = options.stateFilePath || TIKTOK_CONSTANTS.DEFAULT_STATE_FILE;
+  const mode = options.mode || getTikTokConfig().mode;
+  const config = getTikTokConfig(mode);
+  const stateFilePath = options.stateFilePath || path.join(BASE_DATA_DIR, `tiktok_states_${mode}.json`);
   
   const randBytes = crypto.randomBytes(32).toString("hex");
   const timestamp = Date.now();
@@ -116,10 +134,10 @@ export function generateOAuthState(options = {}) {
   // Use client secret if available, or a local salt to sign the state
   const salt = config.clientSecret || "desembre_tiktok_state_salt";
   const hmac = crypto.createHmac("sha256", salt)
-    .update(`${randBytes}:${timestamp}`)
+    .update(`${randBytes}:${timestamp}:${mode}`)
     .digest("hex");
     
-  const stateString = `${randBytes}.${timestamp}.${hmac}`;
+  const stateString = `${randBytes}.${timestamp}.${mode}.${hmac}`;
   
   // Persist state locally for callback validation and replay protection
   try {
@@ -142,6 +160,7 @@ export function generateOAuthState(options = {}) {
     }
     
     states[stateString] = {
+      mode,
       createdAt: now,
       expiresAt: now + 10 * 60 * 1000, // 10 minutes TTL
     };
@@ -157,7 +176,7 @@ export function generateOAuthState(options = {}) {
 /**
  * Validates OAuth state:
  * - Checks format and timestamp (< 10 minutes)
- * - Verifies HMAC signature
+ * - Verifies HMAC signature using the active mode's secret
  * - Verifies presence in state store and consumes it
  */
 export function validateOAuthState(state, options = {}) {
@@ -166,27 +185,32 @@ export function validateOAuthState(state, options = {}) {
   }
   
   const parts = state.split(".");
-  if (parts.length !== 3) {
+  let randBytes, timestampStr, mode, signature;
+
+  if (parts.length === 4) {
+    [randBytes, timestampStr, mode, signature] = parts;
+  } else if (parts.length === 3) {
+    [randBytes, timestampStr, signature] = parts;
+    mode = getTikTokConfig().mode;
+  } else {
     return { valid: false, error: "State parameter format is invalid" };
   }
   
-  const [randBytes, timestampStr, signature] = parts;
   const timestamp = parseInt(timestampStr, 10);
-  
   if (isNaN(timestamp)) {
     return { valid: false, error: "State timestamp is invalid" };
   }
   
   const now = Date.now();
-  // 10 minutes validity window
   if (now - timestamp > 10 * 60 * 1000 || timestamp > now + 60 * 1000) {
     return { valid: false, error: "State parameter has expired" };
   }
   
-  const config = getTikTokConfig();
+  const config = getTikTokConfig(mode);
   const salt = config.clientSecret || "desembre_tiktok_state_salt";
+  const expectedPayload = parts.length === 4 ? `${randBytes}:${timestamp}:${mode}` : `${randBytes}:${timestamp}`;
   const expectedHmac = crypto.createHmac("sha256", salt)
-    .update(`${randBytes}:${timestamp}`)
+    .update(expectedPayload)
     .digest("hex");
     
   if (signature !== expectedHmac) {
@@ -194,7 +218,7 @@ export function validateOAuthState(state, options = {}) {
   }
   
   // Verify state file if present
-  const stateFilePath = options.stateFilePath || TIKTOK_CONSTANTS.DEFAULT_STATE_FILE;
+  const stateFilePath = options.stateFilePath || path.join(BASE_DATA_DIR, `tiktok_states_${mode}.json`);
   if (fs.existsSync(stateFilePath)) {
     try {
       const states = JSON.parse(fs.readFileSync(stateFilePath, "utf8")) || {};
@@ -207,7 +231,7 @@ export function validateOAuthState(state, options = {}) {
     }
   }
   
-  return { valid: true };
+  return { valid: true, mode };
 }
 
 /**
@@ -215,10 +239,12 @@ export function validateOAuthState(state, options = {}) {
  * Redirect URI MUST BE exactly: https://www.desembre-vn.com/tiktok-callback
  */
 export function buildTikTokAuthUrl(state, options = {}) {
-  const config = getTikTokConfig();
+  const mode = options.mode || getTikTokConfig().mode;
+  const config = getTikTokConfig(mode);
   if (!config.isKeyConfigured && !options.clientKey) {
-    throw new Error("TIKTOK_CLIENT_KEY is not configured");
+    throw new Error(mode === "sandbox" ? "TIKTOK_SANDBOX_CLIENT_KEY is not configured" : "TIKTOK_CLIENT_KEY is not configured");
   }
+
   
   const clientKey = options.clientKey || config.clientKey;
   const redirectUri = TIKTOK_CONSTANTS.EXACT_REDIRECT_URI;
@@ -234,33 +260,56 @@ export function buildTikTokAuthUrl(state, options = {}) {
   return url.toString();
 }
 
+function resolveTokenFilePath(options = {}) {
+  if (options.tokenFilePath) return options.tokenFilePath;
+  const mode = options.mode || getTikTokConfig().mode;
+  return path.join(BASE_DATA_DIR, `tiktok_tokens_${mode}.json`);
+}
+
 /**
  * Atomically saves token data with strict permissions
  * Never exposes secrets in console
  */
 export function saveTokenData(tokenData, options = {}) {
-  const targetPath = options.tokenFilePath || TIKTOK_CONSTANTS.DEFAULT_TOKEN_FILE;
+  const targetPath = resolveTokenFilePath(options);
   ensureDir(path.dirname(targetPath));
   
   const tempPath = `${targetPath}.${Date.now()}.tmp`;
-  fs.writeFileSync(tempPath, JSON.stringify(tokenData, null, 2), { mode: 0o600 });
-  fs.renameSync(tempPath, targetPath);
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(tokenData, null, 2), { mode: 0o600 });
+    fs.renameSync(tempPath, targetPath);
+  } catch (_e) {
+    const fallbackPath = path.join(os.tmpdir(), path.basename(targetPath));
+    try {
+      fs.writeFileSync(fallbackPath, JSON.stringify(tokenData, null, 2), { mode: 0o600 });
+    } catch (_err) {}
+  }
 }
 
 /**
  * Loads token data safely
  */
 export function loadTokenData(options = {}) {
-  const targetPath = options.tokenFilePath || TIKTOK_CONSTANTS.DEFAULT_TOKEN_FILE;
-  if (!fs.existsSync(targetPath)) {
-    return null;
+  const targetPath = resolveTokenFilePath(options);
+  if (fs.existsSync(targetPath)) {
+    try {
+      const raw = fs.readFileSync(targetPath, "utf8");
+      return JSON.parse(raw);
+    } catch (_e) {}
   }
-  try {
-    const raw = fs.readFileSync(targetPath, "utf8");
-    return JSON.parse(raw);
-  } catch (_e) {
-    return null;
+  const fallbackPath = path.join(os.tmpdir(), path.basename(targetPath));
+  if (fs.existsSync(fallbackPath)) {
+    try {
+      const raw = fs.readFileSync(fallbackPath, "utf8");
+      return JSON.parse(raw);
+    } catch (_e) {}
   }
+  if (fs.existsSync(TIKTOK_CONSTANTS.DEFAULT_TOKEN_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(TIKTOK_CONSTANTS.DEFAULT_TOKEN_FILE, "utf8"));
+    } catch (_e) {}
+  }
+  return null;
 }
 
 /**
@@ -268,11 +317,12 @@ export function loadTokenData(options = {}) {
  * NEVER exposes secret values, client secret, or tokens
  */
 export function getSanitizedAuthStatus(options = {}) {
-  const tokenData = options.tokenData || loadTokenData(options);
-  const config = getTikTokConfig();
+  const mode = options.mode || getTikTokConfig().mode;
+  const tokenData = options.tokenData || loadTokenData({ ...options, mode });
   
   if (!tokenData || !tokenData.access_token) {
     return {
+      mode,
       authorized: false,
       open_id_present: false,
       video_publish_authorized: false,
@@ -297,6 +347,7 @@ export function getSanitizedAuthStatus(options = {}) {
     : false;
     
   return {
+    mode,
     authorized: !isExpired,
     open_id_present: Boolean(tokenData.open_id),
     video_publish_authorized: hasVideoPublishScope,
@@ -312,17 +363,18 @@ export function getSanitizedAuthStatus(options = {}) {
  * Uses Content-Type: application/x-www-form-urlencoded
  */
 export function exchangeAuthorizationCode(code, options = {}) {
-  const config = getTikTokConfig();
+  const mode = options.mode || getTikTokConfig().mode;
+  const config = getTikTokConfig(mode);
   const clientKey = options.clientKey || config.clientKey;
   const clientSecret = options.clientSecret || config.clientSecret;
   const redirectUri = TIKTOK_CONSTANTS.EXACT_REDIRECT_URI;
   const fetchFn = options.fetchFn || globalThis.fetch;
   
   if (!clientKey) {
-    return Promise.reject(new Error("TIKTOK_CLIENT_KEY is missing"));
+    return Promise.reject(new Error(`TIKTOK_${mode.toUpperCase()}_CLIENT_KEY is missing`));
   }
   if (!clientSecret) {
-    return Promise.reject(new Error("TIKTOK_CLIENT_SECRET is missing"));
+    return Promise.reject(new Error(`TIKTOK_${mode.toUpperCase()}_CLIENT_SECRET is missing`));
   }
   if (!code) {
     return Promise.reject(new Error("Authorization code is missing"));
@@ -352,7 +404,6 @@ export function exchangeAuthorizationCode(code, options = {}) {
       return res.json();
     })
     .then((payload) => {
-      // TikTok v2 response structure: payload.data or top-level
       const data = payload?.data || payload;
       const error = payload?.error;
       
@@ -369,6 +420,7 @@ export function exchangeAuthorizationCode(code, options = {}) {
       const refreshExpiresInSec = Number(data.refresh_expires_in) || 31536000;
       
       const tokenRecord = {
+        mode,
         access_token: data.access_token,
         refresh_token: data.refresh_token,
         expires_in: expiresInSec,
@@ -380,8 +432,8 @@ export function exchangeAuthorizationCode(code, options = {}) {
         refresh_token_expires_at: new Date(now + refreshExpiresInSec * 1000).toISOString(),
       };
       
-      saveTokenData(tokenRecord, options);
-      return getSanitizedAuthStatus({ tokenData: tokenRecord });
+      saveTokenData(tokenRecord, { ...options, mode });
+      return getSanitizedAuthStatus({ tokenData: tokenRecord, mode });
     });
 }
 
@@ -391,18 +443,19 @@ export function exchangeAuthorizationCode(code, options = {}) {
  * Never exposes refresh_token or secrets
  */
 export function refreshTikTokToken(options = {}) {
-  const tokenData = options.tokenData || loadTokenData(options);
+  const mode = options.mode || getTikTokConfig().mode;
+  const tokenData = options.tokenData || loadTokenData({ ...options, mode });
   if (!tokenData || !tokenData.refresh_token) {
     return Promise.reject(new Error("No valid refresh_token available to refresh"));
   }
   
-  const config = getTikTokConfig();
+  const config = getTikTokConfig(mode);
   const clientKey = options.clientKey || config.clientKey;
   const clientSecret = options.clientSecret || config.clientSecret;
   const fetchFn = options.fetchFn || globalThis.fetch;
   
   if (!clientKey || !clientSecret) {
-    return Promise.reject(new Error("TikTok credentials missing for token refresh"));
+    return Promise.reject(new Error(`TikTok credentials missing for ${mode} token refresh`));
   }
   
   const params = new URLSearchParams();
@@ -445,6 +498,7 @@ export function refreshTikTokToken(options = {}) {
       
       const updatedRecord = {
         ...tokenData,
+        mode,
         access_token: data.access_token,
         refresh_token: data.refresh_token || tokenData.refresh_token,
         expires_in: expiresInSec,
@@ -455,8 +509,8 @@ export function refreshTikTokToken(options = {}) {
         refresh_token_expires_at: new Date(now + refreshExpiresInSec * 1000).toISOString(),
       };
       
-      saveTokenData(updatedRecord, options);
-      return getSanitizedAuthStatus({ tokenData: updatedRecord });
+      saveTokenData(updatedRecord, { ...options, mode });
+      return getSanitizedAuthStatus({ tokenData: updatedRecord, mode });
     });
 }
 

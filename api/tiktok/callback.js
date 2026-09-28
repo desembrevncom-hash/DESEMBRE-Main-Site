@@ -189,6 +189,9 @@ export default async function handler(req, res) {
     return res.status(400).send(html);
   }
 
+  const activeMode = validation.mode || getTikTokConfig().mode;
+  const isSandbox = activeMode === "sandbox";
+
   // Check code presence
   if (!code || typeof code !== "string") {
     const html = renderHtmlResponse(
@@ -202,11 +205,12 @@ export default async function handler(req, res) {
 
   // Scenario 4: Behavior C - Server-side token exchange
   try {
-    const authStatus = await exchangeAuthorizationCode(code);
+    const authStatus = await exchangeAuthorizationCode(code, { mode: activeMode });
     const html = renderHtmlResponse(
-      "Kết nối TikTok thành công!",
-      `<p>Tài khoản TikTok doanh nghiệp đã được xác thực an toàn và lưu trữ token phục vụ quy trình xuất bản NLD.</p>
+      `Kết nối TikTok ${isSandbox ? "Sandbox" : "Production"} thành công!`,
+      `<p>Tài khoản TikTok ${isSandbox ? "Sandbox (Target: nghelamdep2026)" : "doanh nghiệp"} đã được xác thực an toàn và lưu trữ token phục vụ quy trình xuất bản NLD.</p>
        <div class="details">
+         <div><span class="key">Môi trường:</span><span class="val" style="color:#f59e0b;">${isSandbox ? "SANDBOX (nghelamdep2026)" : "PRODUCTION"}</span></div>
          <div><span class="key">Trạng thái:</span><span class="val" style="color:#10b981;">AUTHORIZED</span></div>
          <div><span class="key">video.publish Scope:</span><span class="val">${authStatus.video_publish_authorized ? "ĐÃ CẤP QUYỀN" : "CHƯA CÓ"}</span></div>
          <div><span class="key">Bảo mật Credentials:</span><span class="val" style="color:#10b981;">0% Secret Exposed</span></div>
@@ -215,6 +219,7 @@ export default async function handler(req, res) {
       true
     );
     return res.status(200).send(html);
+
   } catch (err) {
     const safeMessage = err instanceof Error ? err.message : "Token exchange failed";
     const html = renderHtmlResponse(

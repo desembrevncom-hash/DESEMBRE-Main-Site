@@ -22,6 +22,7 @@ const configStatus = (config.isKeyConfigured && config.isSecretConfigured) ? "VA
 const authStatus = status.authorized ? "AUTHORIZED" : "NOT_AUTHORIZED";
 const scopeStatus = status.video_publish_authorized ? "AUTHORIZED" : "NOT_AUTHORIZED";
 
+console.log(`TIKTOK_MODE: ${config.mode.toUpperCase()}`);
 console.log(`TIKTOK_CONFIG_STATUS: ${configStatus}`);
 console.log(`TIKTOK_AUTH_STATUS: ${authStatus}`);
 console.log(`ACCESS_TOKEN_PRESENT: ${status.access_token_present}`);
