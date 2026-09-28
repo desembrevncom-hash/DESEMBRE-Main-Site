@@ -1,4 +1,5 @@
 import { DEFAULT_BRANDING } from "@/config/branding";
+import { Link } from "react-router-dom";
 import { Phone, ExternalLink, ShieldCheck, MessageCircle } from "lucide-react";
 
 export function Footer() {
@@ -51,9 +52,13 @@ export function Footer() {
         {/* Bottom Copyright */}
         <div className="pt-6 border-t border-slate-900 flex flex-col sm:flex-row justify-between items-center text-[11px] text-slate-500 gap-2">
           <p>© {new Date().getFullYear()} DESEMBRE VIETNAM. Bản quyền thuộc về đại diện thương hiệu tại Việt Nam.</p>
-          <p className="text-slate-600">
-            Hệ thống xác minh chính hãng dành cho Spa, Clinic và Quý khách hàng.
-          </p>
+          <div className="flex items-center gap-4 text-slate-600">
+            <span>Hệ thống xác minh chính hãng dành cho Spa, Clinic và Quý khách hàng.</span>
+            <span className="text-slate-800">|</span>
+            <Link to="/tiktok" className="text-amber-500/80 hover:text-amber-400 transition-colors font-medium">
+              TikTok Studio
+            </Link>
+          </div>
         </div>
       </div>
     </footer>

@@ -29,3 +29,15 @@ dist-ssr
 .env.development.local
 .env.test.local
 .env.production.local
+
+# TikTok OAuth & Token Storage
+.data
+.data/
+.tiktok_token.json
+.tiktok_tokens.json
+.tiktok_state.json
+*.token.json
+
+
+.vercel
+.env*

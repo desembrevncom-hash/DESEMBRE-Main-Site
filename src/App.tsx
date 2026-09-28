@@ -2,12 +2,18 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { HomePage } from "@/pages/HomePage";
 import { OfficialCatalogPage } from "@/pages/OfficialCatalogPage";
+import { TikTokLandingPage } from "@/pages/TikTokLandingPage";
+import { TikTokCallbackPage } from "@/pages/TikTokCallbackPage";
 
 export default function App() {
   return (
     <Routes>
       {/* Standalone Full-Viewport Cinematic Verification Landing */}
       <Route path="/official" element={<OfficialCatalogPage />} />
+
+      {/* TikTok OAuth & Video Automation Studio */}
+      <Route path="/tiktok" element={<TikTokLandingPage />} />
+      <Route path="/tiktok-callback" element={<TikTokCallbackPage />} />
 
       {/* Main Standard Layout Pages */}
       <Route path="/" element={<Layout />}>
