@@ -305,7 +305,7 @@ test("10. Token refresh mocks POST and atomically updates stored token", async (
 test("11. Missing environment variables handled safely without crashing", () => {
   assert.throws(() => {
     buildTikTokAuthUrl("state", { clientKey: "" });
-  }, /TIKTOK_CLIENT_KEY/);
+  }, /TIKTOK_(SANDBOX_)?CLIENT_KEY/);
 });
 
 test("12. Zero secret values exposed in logs or status representations", () => {
