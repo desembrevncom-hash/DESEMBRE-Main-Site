@@ -26,17 +26,58 @@ interface SanitizedStatus {
   video_publish_authorized: boolean;
   access_token_present: boolean;
   refresh_token_present: boolean;
-  access_token_expires_at: string | null;
+  creator_info_available?: boolean;
+  creator_username_or_display_name_if_available?: string | null;
+  privacy_level_options?: string[];
+  max_video_post_duration_sec?: number | null;
+  access_token_expires_at?: string | null;
   secret_values_exposed: boolean;
 }
 
+interface PreflightStatus {
+  mode: string;
+  oauth_authorized: boolean;
+  video_publish_scope: string;
+  creator_info_query: string;
+  creator_account: string | null;
+  privacy_options_available: string[];
+  max_video_duration: number;
+  file_upload_ready: boolean;
+  video_init_payload_valid: boolean;
+  video_master_file_present: boolean;
+  access_token_present: boolean;
+  refresh_token_present: boolean;
+  token_refreshed_during_preflight: boolean;
+  secret_values_exposed: boolean;
+  real_tiktok_video_init_calls: number;
+  real_tiktok_upload_calls: number;
+  real_tiktok_publish_calls: number;
+  real_facebook_publish_calls: number;
+  next_action: string;
+}
 
 export function TikTokLandingPage() {
   const [status, setStatus] = useState<SanitizedStatus | null>(null);
+  const [preflight, setPreflight] = useState<PreflightStatus | null>(null);
+  const [loadingPreflight, setLoadingPreflight] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"status" | "pipeline" | "audit">("status");
+
+  const runPreflight = async () => {
+    try {
+      setLoadingPreflight(true);
+      const res = await fetch("/api/tiktok/preflight");
+      if (res.ok) {
+        const data = await res.json();
+        setPreflight(data);
+      }
+    } catch (_e) {
+    } finally {
+      setLoadingPreflight(false);
+    }
+  };
 
   const fetchStatus = async () => {
     try {
@@ -273,6 +314,76 @@ export function TikTokLandingPage() {
                 <span className="text-xs font-semibold text-emerald-300">0% Secret Exposed</span>
               </div>
             </div>
+          </div>
+
+          {/* Creator Info & Posting Capabilities */}
+          <div className="mt-6 pt-6 border-t border-slate-800/60">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-amber-400" />
+                  TikTok Creator & Posting Capabilities
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Thông tin hồ sơ và tính năng đăng video trả về từ TikTok Creator Info Query
+                </p>
+              </div>
+              <button
+                onClick={runPreflight}
+                disabled={loadingPreflight}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-colors"
+              >
+                <Terminal className={`w-3.5 h-3.5 ${loadingPreflight ? "animate-spin" : ""}`} />
+                <span>{loadingPreflight ? "Đang chạy Preflight..." : "Chạy Preflight Test"}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3 rounded-lg bg-slate-950/40 border border-slate-800/60">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-0.5">Creator Account</span>
+                <span className="text-xs font-mono font-medium text-slate-200">
+                  {status?.creator_username_or_display_name_if_available || (status?.mode === "sandbox" ? "nghelamdep2026" : "Chưa có")}
+                </span>
+              </div>
+              <div className="p-3 rounded-lg bg-slate-950/40 border border-slate-800/60">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-0.5">Quyền riêng tư (Privacy)</span>
+                <span className="text-xs font-mono text-slate-300">
+                  {status?.privacy_level_options && status.privacy_level_options.length > 0
+                    ? status.privacy_level_options.join(", ")
+                    : "PUBLIC, FRIENDS, SELF"}
+                </span>
+              </div>
+              <div className="p-3 rounded-lg bg-slate-950/40 border border-slate-800/60">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-0.5">Thời lượng tối đa</span>
+                <span className="text-xs font-mono font-semibold text-emerald-400">
+                  {status?.max_video_post_duration_sec ? `${status.max_video_post_duration_sec}s` : "600s"}
+                </span>
+              </div>
+            </div>
+
+            {preflight && (
+              <div className="mt-4 p-4 rounded-xl bg-slate-950 border border-amber-500/30">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    Preflight Pipeline Verification Report
+                  </span>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                    Mode: {preflight.mode}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                  <div className="text-slate-400">OAuth: <span className="text-emerald-400 font-bold">{preflight.oauth_authorized ? "AUTHORIZED" : "NO"}</span></div>
+                  <div className="text-slate-400">Scope: <span className="text-emerald-400 font-bold">{preflight.video_publish_scope}</span></div>
+                  <div className="text-slate-400">Creator Info: <span className="text-emerald-400 font-bold">{preflight.creator_info_query}</span></div>
+                  <div className="text-slate-400">FILE_UPLOAD: <span className="text-emerald-400 font-bold">{preflight.file_upload_ready ? "READY" : "NO"}</span></div>
+                  <div className="text-slate-400">Payload Valid: <span className="text-emerald-400 font-bold">{preflight.video_init_payload_valid ? "VALID" : "NO"}</span></div>
+                  <div className="text-slate-400">Real Init Calls: <span className="text-emerald-400 font-bold">{preflight.real_tiktok_video_init_calls}</span></div>
+                  <div className="text-slate-400">Real Upload Calls: <span className="text-emerald-400 font-bold">{preflight.real_tiktok_upload_calls}</span></div>
+                  <div className="text-slate-400">Real Publish Calls: <span className="text-emerald-400 font-bold">{preflight.real_tiktok_publish_calls}</span></div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

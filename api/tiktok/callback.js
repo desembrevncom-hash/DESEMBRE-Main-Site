@@ -1,4 +1,12 @@
-import { exchangeAuthorizationCode, validateOAuthState, loadEnv } from "../../server/tiktokService.js";
+import {
+  exchangeAuthorizationCode,
+  validateOAuthState,
+  loadEnv,
+  encryptTokenPayload,
+  loadTokenData,
+  getTikTokConfig,
+  queryCreatorInfo,
+} from "../../server/tiktokService.js";
 
 loadEnv();
 
@@ -206,6 +214,22 @@ export default async function handler(req, res) {
   // Scenario 4: Behavior C - Server-side token exchange
   try {
     const authStatus = await exchangeAuthorizationCode(code, { mode: activeMode });
+    
+    // Attempt querying and caching creator info immediately
+    const tokenRecord = loadTokenData({ mode: activeMode });
+    if (tokenRecord) {
+      try {
+        await queryCreatorInfo({ mode: activeMode, tokenData: tokenRecord });
+      } catch (_e) {}
+
+      // Set HttpOnly, Secure session cookie with encrypted token
+      const config = getTikTokConfig(activeMode);
+      const encryptedSession = encryptTokenPayload(tokenRecord, config.clientSecret);
+      if (encryptedSession) {
+        res.setHeader("Set-Cookie", `tiktok_session=${encryptedSession}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`);
+      }
+    }
+
     const html = renderHtmlResponse(
       `Kết nối TikTok ${isSandbox ? "Sandbox" : "Production"} thành công!`,
       `<p>Tài khoản TikTok ${isSandbox ? "Sandbox (Target: nghelamdep2026)" : "doanh nghiệp"} đã được xác thực an toàn và lưu trữ token phục vụ quy trình xuất bản NLD.</p>

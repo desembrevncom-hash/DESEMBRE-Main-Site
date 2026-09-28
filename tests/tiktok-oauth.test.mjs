@@ -19,6 +19,10 @@ import {
   loadTokenData,
   getSanitizedAuthStatus,
   getCreatorInfo,
+  queryCreatorInfo,
+  sanitizeCreatorInfo,
+  buildVideoInitPayload,
+  runPreflightCheck,
   initVideoPublish,
 } from "../server/tiktokService.js";
 
@@ -465,4 +469,258 @@ test("17. Sandbox and Production callback code exchange matches active mode", as
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("18. queryCreatorInfo sends POST with Bearer token and returns sanitized creator response", async () => {
+  let capturedHeaders = {};
+  let capturedUrl = "";
+  const mockFetch = async (url, opts) => {
+    capturedUrl = url;
+    capturedHeaders = opts.headers;
+    return {
+      ok: true,
+      json: async () => ({
+        data: {
+          creator_avatar_url: "https://p16-sign.tiktokcdn.com/avatar123.jpeg",
+          creator_username: "nghelamdep2026",
+          creator_nickname: "Nghề Làm Đẹp",
+          privacy_level_options: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "SELF_ONLY"],
+          comment_disabled: false,
+          duet_disabled: false,
+          stitch_disabled: false,
+          max_video_post_duration_sec: 600,
+        },
+        error: { code: "ok" },
+      }),
+    };
+  };
+
+  const res = await queryCreatorInfo({
+    tokenData: {
+      access_token: "mock_access_token_123",
+      mode: "sandbox",
+    },
+    fetchFn: mockFetch,
+  });
+
+  assert.equal(capturedUrl, "https://open.tiktokapis.com/v2/post/publish/creator_info/query/");
+  assert.equal(capturedHeaders.Authorization, "Bearer mock_access_token_123");
+  assert.equal(res.creator_username, "nghelamdep2026");
+  assert.equal(res.creator_username_or_display_name_if_available, "nghelamdep2026");
+  assert.deepEqual(res.privacy_level_options, ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "SELF_ONLY"]);
+  assert.equal(res.max_video_post_duration_sec, 600);
+  assert.equal(res.creator_info_available, true);
+});
+
+test("19. sanitizeCreatorInfo extracts capability fields and never exposes secrets or tokens", () => {
+  const sanitized = sanitizeCreatorInfo({
+    creator_avatar_url: "https://tiktok.com/avatar.jpg",
+    creator_username: "nghelamdep2026",
+    privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+    comment_disabled: true,
+    duet_disabled: false,
+    stitch_disabled: false,
+    max_video_post_duration_sec: 180,
+    access_token: "SHOULD_NOT_LEAK",
+    client_secret: "SHOULD_NOT_LEAK",
+  });
+
+  assert.equal(sanitized.creator_username, "nghelamdep2026");
+  assert.equal(sanitized.comment_disabled, true);
+  assert.equal(sanitized.max_video_post_duration_sec, 180);
+  assert.equal(sanitized.access_token, undefined);
+  assert.equal(sanitized.client_secret, undefined);
+  assert.equal(sanitized.creator_info_available, true);
+});
+
+test("20. runPreflightCheck validates sandbox mode, token, scopes, creator info, and payload readiness with zero publish calls", async () => {
+  let publishCallCount = 0;
+  let videoInitCallCount = 0;
+  const mockFetch = async (url, opts) => {
+    if (url.includes("video/init")) videoInitCallCount++;
+    if (url.includes("publish")) publishCallCount++;
+    return {
+      ok: true,
+      json: async () => ({
+        data: {
+          creator_username: "nghelamdep2026",
+          privacy_level_options: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "SELF_ONLY"],
+          max_video_post_duration_sec: 600,
+        },
+      }),
+    };
+  };
+
+  const preflight = await runPreflightCheck({
+    mode: "sandbox",
+    tokenData: {
+      mode: "sandbox",
+      access_token: "sb_token_valid",
+      refresh_token: "sb_refresh_valid",
+      scope: "user.info.basic,video.publish",
+      access_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+    },
+    fetchFn: mockFetch,
+  });
+
+  assert.equal(preflight.mode, "sandbox");
+  assert.equal(preflight.oauth_authorized, true);
+  assert.equal(preflight.video_publish_scope, "AUTHORIZED");
+  assert.equal(preflight.creator_info_query, "SUCCESS");
+  assert.equal(preflight.creator_account, "nghelamdep2026");
+  assert.equal(preflight.file_upload_ready, true);
+  assert.equal(preflight.video_init_payload_valid, true);
+  assert.equal(preflight.secret_values_exposed, false);
+  assert.equal(preflight.real_tiktok_video_init_calls, 0);
+  assert.equal(preflight.real_tiktok_upload_calls, 0);
+  assert.equal(preflight.real_tiktok_publish_calls, 0);
+  assert.equal(preflight.real_facebook_publish_calls, 0);
+  assert.equal(videoInitCallCount, 0, "video/init must not be called during preflight");
+});
+
+test("21. token expiration handling triggers automatic refresh when token is expired", async () => {
+  let refreshCalled = false;
+  const mockFetch = async (url, opts) => {
+    if (url.includes("token")) {
+      refreshCalled = true;
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            access_token: "new_refreshed_access_token",
+            refresh_token: "new_refresh_token",
+            expires_in: 86400,
+          },
+        }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        data: {
+          creator_username: "nghelamdep2026",
+          privacy_level_options: ["PUBLIC_TO_EVERYONE"],
+          max_video_post_duration_sec: 600,
+        },
+      }),
+    };
+  };
+
+  const { tokenFile, tmpDir } = createTempFiles();
+  try {
+    const expiredTokenData = {
+      mode: "sandbox",
+      access_token: "old_expired_token",
+      refresh_token: "sb_refresh_token",
+      access_token_expires_at: new Date(Date.now() - 10000).toISOString(), // expired
+    };
+    saveTokenData(expiredTokenData, { tokenFilePath: tokenFile });
+
+    const preflight = await runPreflightCheck({
+      mode: "sandbox",
+      clientKey: "test_key",
+      clientSecret: "test_secret",
+      tokenData: expiredTokenData,
+      tokenFilePath: tokenFile,
+      fetchFn: mockFetch,
+    });
+
+    assert.equal(refreshCalled, true, "Expired token must trigger automatic refresh");
+    assert.equal(preflight.token_refreshed_during_preflight, true);
+    assert.equal(preflight.oauth_authorized, true);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("22. buildVideoInitPayload builds FILE_UPLOAD payload and dynamically adopts creator privacy options", () => {
+  const creatorInfo = {
+    creator_username: "nghelamdep2026",
+    privacy_level_options: ["MUTUAL_FOLLOW_FRIENDS", "SELF_ONLY"], // PUBLIC_TO_EVERYONE not allowed
+    duet_disabled: true,
+    stitch_disabled: true,
+    comment_disabled: false,
+    max_video_post_duration_sec: 300,
+  };
+
+  const result = buildVideoInitPayload(creatorInfo, {
+    video_size: 5 * 1024 * 1024,
+    chunk_size: 2 * 1024 * 1024,
+    title: "Nghề Làm Đẹp Master Video #1",
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.source, "FILE_UPLOAD");
+  assert.equal(result.payload.source_info.source, "FILE_UPLOAD");
+  assert.equal(result.payload.source_info.video_size, 5 * 1024 * 1024);
+  assert.equal(result.payload.source_info.chunk_size, 2 * 1024 * 1024);
+  assert.equal(result.payload.source_info.total_chunk_count, 3);
+  assert.equal(result.payload.post_info.title, "Nghề Làm Đẹp Master Video #1");
+  assert.equal(result.payload.post_info.privacy_level, "MUTUAL_FOLLOW_FRIENDS"); // Dynamically adapted!
+  assert.equal(result.payload.post_info.disable_duet, true);
+  assert.equal(result.payload.post_info.disable_stitch, true);
+  assert.equal(result.payload.post_info.disable_comment, false);
+});
+
+test("23. buildVideoInitPayload rejects video duration exceeding max_video_post_duration_sec", () => {
+  const creatorInfo = {
+    creator_username: "nghelamdep2026",
+    max_video_post_duration_sec: 60, // 60 seconds max
+  };
+
+  assert.throws(
+    () => {
+      buildVideoInitPayload(creatorInfo, {
+        video_size: 1024 * 1024,
+        video_duration_sec: 120, // 120 seconds exceeds 60s
+      });
+    },
+    /exceeds creator maximum allowed duration/
+  );
+});
+
+test("24. getSanitizedAuthStatus returns the exact 11 fields requested without leaking secrets or tokens", () => {
+  const status = getSanitizedAuthStatus({
+    mode: "sandbox",
+    tokenData: {
+      mode: "sandbox",
+      access_token: "secret_access_token_123",
+      refresh_token: "secret_refresh_token_456",
+      open_id: "openid_789",
+      scope: "user.info.basic,video.publish",
+      access_token_expires_at: new Date(Date.now() + 86400 * 1000).toISOString(),
+      creator_info: {
+        creator_username: "nghelamdep2026",
+        privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+        max_video_post_duration_sec: 600,
+      },
+    },
+  });
+
+  const expectedKeys = [
+    "mode",
+    "authorized",
+    "open_id_present",
+    "video_publish_authorized",
+    "access_token_present",
+    "refresh_token_present",
+    "creator_info_available",
+    "creator_username_or_display_name_if_available",
+    "privacy_level_options",
+    "max_video_post_duration_sec",
+    "secret_values_exposed",
+  ];
+
+  for (const k of expectedKeys) {
+    assert.ok(Object.prototype.hasOwnProperty.call(status, k), `Missing required field: ${k}`);
+  }
+
+  assert.equal(status.access_token, undefined, "access_token must not be returned");
+  assert.equal(status.refresh_token, undefined, "refresh_token must not be returned");
+  assert.equal(status.client_secret, undefined, "client_secret must not be returned");
+  assert.equal(status.secret_values_exposed, false);
+  assert.equal(status.creator_username_or_display_name_if_available, "nghelamdep2026");
+  assert.equal(status.authorized, true);
+  assert.equal(status.video_publish_authorized, true);
+});
+
 
